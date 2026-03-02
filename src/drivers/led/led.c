@@ -8,18 +8,18 @@
 
 void d_led_set(bool led_on) {
 #if defined(PICO_DEFAULT_LED_PIN)
-    gpio_put(PICO_DEFAULT_LED_PIN, led_on);
+  gpio_put(PICO_DEFAULT_LED_PIN, led_on);
 #elif defined(CYW43_WL_GPIO_LED_PIN)
-    cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, led_on);
+  cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, led_on);
 #endif
 }
 
 void d_led_init(void) {
 #if defined(PICO_DEFAULT_LED_PIN)
-    gpio_init(PICO_DEFAULT_LED_PIN);
-    gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
+  gpio_init(PICO_DEFAULT_LED_PIN);
+  gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
 #elif defined(CYW43_WL_GPIO_LED_PIN)
-    hard_assert(cyw43_arch_init() == PICO_OK);
-    pico_set_led(false);
+  hard_assert(cyw43_arch_init() == PICO_OK);
+  pico_set_led(false);
 #endif
 }

@@ -8,12 +8,13 @@ pico_enable_stdio_usb(${PROJECT_NAME} 1)
 pico_enable_stdio_uart(${PROJECT_NAME} 1)
 
 target_link_libraries(${PROJECT_NAME}
-    pico_stdlib
-    FreeRTOS-Kernel-Heap4
+  pico_stdlib
+  hardware_i2c
+  FreeRTOS-Kernel-Heap4
 )
 
 if (PICO_CYW43_SUPPORTED)
-    target_link_libraries(${PROJECT_NAME} pico_cyw43_arch_none)
+  target_link_libraries(${PROJECT_NAME} pico_cyw43_arch_none)
 endif()
 
 pico_add_extra_outputs(${PROJECT_NAME})
