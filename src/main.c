@@ -11,7 +11,7 @@
 void blink_task(__unused void *params) {
     bool on = false;
     printf("blink_task starts\n");
-    pico_led_init();
+    d_led_init();
     while (true) {
 #if configNUMBER_OF_CORES > 1
         static int last_core_id = -1;
@@ -20,7 +20,7 @@ void blink_task(__unused void *params) {
             printf("blink task is on core %d\n", last_core_id);
         }
 #endif
-        pico_set_led(on);
+        d_led_set(on);
         on = !on;
 
         vTaskDelay(500 / portTICK_PERIOD_MS);

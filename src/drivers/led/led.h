@@ -2,5 +2,5 @@
 
 #include <stdbool.h>
 
-void pico_set_led(bool led_on);
-void pico_led_init(void);
+void d_led_set(bool led_on);
+void d_led_init(void);

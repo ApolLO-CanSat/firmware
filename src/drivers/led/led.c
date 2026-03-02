@@ -6,7 +6,7 @@
 
 #include "led.h"
 
-void pico_set_led(bool led_on) {
+void d_led_set(bool led_on) {
 #if defined(PICO_DEFAULT_LED_PIN)
     gpio_put(PICO_DEFAULT_LED_PIN, led_on);
 #elif defined(CYW43_WL_GPIO_LED_PIN)
@@ -14,7 +14,7 @@ void pico_set_led(bool led_on) {
 #endif
 }
 
-void pico_led_init(void) {
+void d_led_init(void) {
 #if defined(PICO_DEFAULT_LED_PIN)
     gpio_init(PICO_DEFAULT_LED_PIN);
     gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
