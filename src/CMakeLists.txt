@@ -13,6 +13,13 @@ target_link_libraries(${PROJECT_NAME}
   FreeRTOS-Kernel-Heap4
 )
 
+if (PICO_BOARD STREQUAL "orpheus_pico")
+  target_link_libraries(${PROJECT_NAME} pico_bootsel_via_double_reset)
+  target_compile_definitions(${PROJECT_NAME} PRIVATE
+   	PICO_BOOTSEL_VIA_DOUBLE_RESET_ACTIVITY_LED=23
+  	)
+endif()
+
 if (PICO_CYW43_SUPPORTED)
   target_link_libraries(${PROJECT_NAME} pico_cyw43_arch_none)
 endif()
