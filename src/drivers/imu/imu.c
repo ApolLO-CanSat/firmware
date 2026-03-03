@@ -1,6 +1,9 @@
 #include "hardware/i2c.h"
 #include "pico/stdlib.h"
 
+#include "FreeRTOS.h"
+#include "task.h"
+
 #include "drivers/i2c/i2c.h"
 
 static int addr = 0x68;
@@ -11,6 +14,8 @@ void d_imu_init() {
   // Reset
   uint8_t buf[] = {0x6b, 0x80};
   d_i2c_write(addr, buf, sizeof(buf), false);
+
+  vTaskDelay(100 / portTICK_PERIOD_MS);
 
   // Clear sleep mode
   buf[1] = 0x00;
