@@ -31,8 +31,8 @@ PIDController pid_altitude_rate = {
     .previous_error = 0.0f,
     .out_max = 100.0f,
     .out_min = 0.0f,
-    .integral_max = 100.0f,
-    .integral_min = -100.0f
+    .integral_max = 50.0f,
+    .integral_min = -50.0f
 };
 
 PIDController pid_alt_limiter = {
@@ -57,15 +57,15 @@ PIDController pid_pitch_rate = {
     .integral = 0.0f,
     .previous_error = 0.0f,
     .out_max = 100.0f,
-    .out_min = 0.0f,
-    .integral_max = 0.0f,
-    .integral_min = 0.0f
+    .out_min = -100.0f,
+    .integral_max = 500.0f,
+    .integral_min = -500.0f
 };
 
 PIDController pid_pitch_angle = {
     .Kp = 6.0f,
-    .Ki = 0.0f,
-    .Kd = 0.0f,
+    .Ki = 0.0f, // TO BE TUNED!!!
+    .Kd = 0.0f, // TO BE TUNED!!!
     .integral = 0.0f,
     .previous_error = 0.0f,
     .out_max = 360.0f, // max 360 degrees/s
@@ -107,21 +107,21 @@ PIDController pid_roll_rate = {
     .integral = 0.0f,
     .previous_error = 0.0f,
     .out_max = 100.0f,
-    .out_min = 0.0f,
-    .integral_max = 0.0f,
-    .integral_min = 0.0f
+    .out_min = -100.0f,
+    .integral_max = 500.0f,
+    .integral_min = -500.0f
 };
 
 PIDController pid_roll_angle = {
     .Kp = 6.0f,
-    .Ki = 0.0f,
-    .Kd = 0.0f,
+    .Ki = 0.0f, // TO BE TUNED!!!
+    .Kd = 0.0f, // TO BE TUNED!!!
     .integral = 0.0f,
     .previous_error = 0.0f,
     .out_max = 360.0f, // max 360 degrees/s
     .out_min = -360.0f, // min -360 degrees/s
     .integral_max = 0.0f, // no integral term (FOR NOW!)
-    .integral_min = 0.0f
+    .integral_min = 0.0f  
 };
 
 PIDController pid_y_speed = {
@@ -150,7 +150,29 @@ PIDController pid_y_speed_limiter = {
 
 // Now yaw!
 
+PIDController pid_yaw_rate = {
+    .Kp = 0.15f,
+    .Ki = 0.10f,
+    .Kd = 0.000f, // please dont add D term to yaw. SZYMALA PLEASE DONT. YOU WILL COOK THE HELL OUT OF THE MOTORS. I KNOW YOU WANT TO TUNE IT, BUT PLEASE DONT. JUST LEAVE IT AT 0.
+    .integral = 0.0f,
+    .previous_error = 0.0f,
+    .out_max = 100.0f,
+    .out_min = -100.0f,
+    .integral_max = 100.0f,
+    .integral_min = -100.0f
+};
 
+PIDController pid_yaw_limiter = {
+    .Kp = 4.0f,
+    .Ki = 0.0f,
+    .Kd = 0.0f,
+    .integral = 0.0f,
+    .previous_error = 0.0f,
+    .out_max = 180.0f, // max 180 degrees/s
+    .out_min = -180.0f, // min -180 degrees/s
+    .integral_max = 0.0f,
+    .integral_min = 0.0f
+};
 
 
 
