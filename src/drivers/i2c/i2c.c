@@ -73,10 +73,10 @@ int d_i2c_write_read_unsafe(uint8_t addr, const uint8_t *src, size_t src_len, ui
   if (!is_i2c_initialized)
     return PICO_ERROR_GENERIC;
 
-  int result = i2c_write_blocking(i2c_default, addr, src, src_len, true);
+  int result = d_i2c_write_unsafe(addr, src, src_len, true);
   if (result < 0)
     return result;
-  return i2c_read_blocking(i2c_default, addr, dst, dst_len, false);
+  return d_i2c_read_unsafe(addr, dst, dst_len, false);
 }
 
 int d_i2c_write_read(uint8_t addr, const uint8_t *src, size_t src_len, uint8_t *dst, size_t dst_len) {

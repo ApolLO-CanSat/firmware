@@ -14,6 +14,7 @@ build PICO_BOARD="": (configure PICO_BOARD)
 uf2_file := "build/src/cansat_firmware.uf2"
 alias flash := flash_uf2
 flash_uf2 PICO_BOARD="": (build PICO_BOARD)
+  picotool reboot -f -u
   python3 tools/uf2conv.py -f RP2040 -D {{ uf2_file }}
 
 serial serial_port="/dev/ttyACM0":
