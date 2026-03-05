@@ -198,5 +198,4 @@ void d_baro_read(int32_t *temp, int32_t *pressure) {
   d_baro_read_raw(&raw_temp, &raw_pressure);
   *temp     = d_baro_convert_temp(raw_temp, &calib_params);
   *pressure = d_baro_convert_pressure(raw_pressure, raw_temp, &calib_params);
-  LT_D("raw temp: %d, raw pressure: %d, converted temp: %d, converted pressure: %d", raw_temp, raw_pressure, *temp, *pressure);
 }
