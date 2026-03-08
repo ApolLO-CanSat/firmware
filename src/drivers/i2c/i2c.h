@@ -4,10 +4,11 @@
 #include <stddef.h>
 #include <stdint.h>
 
-void d_i2c_init();
-
+void d_i2c_mutex_create();
 void d_i2c_mutex_take();
 void d_i2c_mutex_give();
+
+void d_i2c_init();
 
 int d_i2c_write_unsafe(uint8_t addr, const uint8_t *src, size_t len, bool nostop);
 int d_i2c_write(uint8_t addr, const uint8_t *src, size_t len, bool nostop);

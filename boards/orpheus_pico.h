@@ -36,6 +36,11 @@ pico_board_cmake_set(PICO_PLATFORM, rp2040)
 // --- SPI ---
 // (no changes)
 
+// --- LoRa ---
+#ifndef LORA_DIO0_PIN
+#define LORA_DIO0_PIN 26
+#endif
+
 // --- FLASH ---
 // (no changes)
 

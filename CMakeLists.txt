@@ -1,3 +1,8 @@
+cmake_minimum_required(VERSION 3.14)
+
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # == DO NOT EDIT THE FOLLOWING LINES for the Raspberry Pi Pico VS Code Extension to work ==
 if(WIN32)
     set(USERHOME $ENV{USERPROFILE})
@@ -12,11 +17,13 @@ if (EXISTS ${picoVscode})
     include(${picoVscode})
 endif()
 # ====================================================================================
-cmake_minimum_required(VERSION 3.14)
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(FREERTOS_KERNEL_PATH ${CMAKE_CURRENT_LIST_DIR}/lib/FreeRTOS-Kernel)
 set(PICO_BOARD_HEADER_DIRS ${CMAKE_CURRENT_LIST_DIR}/boards)
+
+if (EXISTS ${CMAKE_CURRENT_LIST_DIR}/CMakeLists.local.txt)
+    include(${CMAKE_CURRENT_LIST_DIR}/CMakeLists.local.txt)
+endif()
 
 include(pico_sdk_import.cmake)
 include(${FREERTOS_KERNEL_PATH}/portable/ThirdParty/GCC/RP2040/FreeRTOS_Kernel_import.cmake)

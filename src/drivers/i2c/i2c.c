@@ -5,20 +5,42 @@
 #include "FreeRTOS.h"
 #include "semphr.h"
 
+#include "drivers/lt_logger/lt_logger.h"
+
 #include "i2c.h"
 
 #if !defined(i2c_default) || !defined(PICO_DEFAULT_I2C_SDA_PIN) || !defined(PICO_DEFAULT_I2C_SCL_PIN)
 #error "Default I2C pins not found in the board configuration"
 #endif
 
-SemaphoreHandle_t i2c_mutex;
+// Mutex utils
+static SemaphoreHandle_t i2c_mutex = NULL;
+
+void d_i2c_mutex_create() {
+  if (!i2c_mutex)
+    i2c_mutex = xSemaphoreCreateMutex();
+}
+
+void d_i2c_mutex_take() {
+  xSemaphoreTake(i2c_mutex, portMAX_DELAY);
+}
+
+void d_i2c_mutex_give() {
+  xSemaphoreGive(i2c_mutex);
+}
+
+// Initialization
 static bool is_i2c_initialized = false;
 
 void d_i2c_init() {
+  d_i2c_mutex_create();
+
+  d_i2c_mutex_take();
+
   if (is_i2c_initialized)
     return;
-  i2c_mutex = xSemaphoreCreateMutex();
-  xSemaphoreTake(i2c_mutex, portMAX_DELAY);
+
+  LT_T("Initializing I2C");
 
   i2c_init(i2c_default, 400 * 1000);
   gpio_set_function(PICO_DEFAULT_I2C_SDA_PIN, GPIO_FUNC_I2C);
@@ -27,17 +49,10 @@ void d_i2c_init() {
   gpio_pull_up(PICO_DEFAULT_I2C_SCL_PIN);
   bi_decl(bi_2pins_with_func(PICO_DEFAULT_I2C_SDA_PIN, PICO_DEFAULT_I2C_SCL_PIN, GPIO_FUNC_I2C));
 
-  xSemaphoreGive(i2c_mutex);
   is_i2c_initialized = true;
-}
+  LT_T("I2C initialized");
 
-// Mutex utils
-void d_i2c_mutex_take() {
-  xSemaphoreTake(i2c_mutex, portMAX_DELAY);
-}
-
-void d_i2c_mutex_give() {
-  xSemaphoreGive(i2c_mutex);
+  d_i2c_mutex_give();
 }
 
 // Write

@@ -1,3 +1,4 @@
+#include "drivers/lt_logger/lt_logger.h"
 #include "pico/stdlib.h"
 
 #include "FreeRTOS.h"
@@ -10,6 +11,7 @@
 #define ADDR _u(0x68)
 
 void d_imu_init() {
+  LT_T("Initializing MPU6050");
   d_i2c_init();
 
   // Reset
@@ -21,29 +23,29 @@ void d_imu_init() {
   // Clear sleep mode
   buf[1] = 0x00;
   d_i2c_write(ADDR, buf, sizeof(buf), false);
+  
+  LT_T("Initialized MPU6050");
+  
+  vTaskDelay(100 / portTICK_PERIOD_MS);
 }
 
 void d_imu_read_raw(int16_t accel[3], int16_t gyro[3], int16_t *temp) {
   uint8_t buffer[6];
 
-  d_i2c_mutex_take();
-  
   // Start reading acceleration registers from register 0x3B for 6 bytes
   uint8_t val = 0x3B;
-  d_i2c_write_read_unsafe(ADDR, &val, sizeof(val), buffer, sizeof(buffer));
+  d_i2c_write_read(ADDR, &val, sizeof(val), buffer, sizeof(buffer));
   for (int i = 0; i < 3; i++)
     accel[i] = (buffer[i * 2] << 8 | buffer[(i * 2) + 1]);
 
   // Now gyro data from reg 0x43 for 6 bytes
   val = 0x43;
-  d_i2c_write_read_unsafe(ADDR, &val, sizeof(val), buffer, sizeof(buffer));
+  d_i2c_write_read(ADDR, &val, sizeof(val), buffer, sizeof(buffer));
   for (int i = 0; i < 3; i++)
     gyro[i] = (buffer[i * 2] << 8 | buffer[(i * 2) + 1]);
 
   // Now temperature from reg 0x41 for 2 bytes
   val = 0x41;
-  d_i2c_write_read_unsafe(ADDR, &val, sizeof(val), buffer, sizeof(buffer));
+  d_i2c_write_read(ADDR, &val, sizeof(val), buffer, sizeof(buffer));
   *temp = buffer[0] << 8 | buffer[1];
-
-  d_i2c_mutex_give();
 }

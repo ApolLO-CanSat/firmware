@@ -169,6 +169,7 @@ static void d_baro_get_calib_params(d_baro_calib_param *params) {
 static d_baro_calib_param calib_params;
 
 void d_baro_init() {
+  LT_T("Initializing BMP280");
   d_i2c_init();
 
   uint8_t buf[2];
@@ -190,7 +191,10 @@ void d_baro_init() {
   vTaskDelay(100 / portTICK_PERIOD_MS);
 
   // read the calibration parameters once during initialization and store them for later use
+  LT_T("Reading BMP280 calibration parameters");
   d_baro_get_calib_params(&calib_params);
+  
+  LT_T("Initialized BMP280");
 }
 
 void d_baro_read(int32_t *temp, int32_t *pressure) {
