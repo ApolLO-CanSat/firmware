@@ -16,11 +16,6 @@
 // Mutex utils
 static SemaphoreHandle_t i2c_mutex = NULL;
 
-void d_i2c_mutex_create() {
-  if (!i2c_mutex)
-    i2c_mutex = xSemaphoreCreateMutex();
-}
-
 void d_i2c_mutex_take() {
   xSemaphoreTake(i2c_mutex, portMAX_DELAY);
 }
@@ -33,10 +28,6 @@ void d_i2c_mutex_give() {
 static bool is_i2c_initialized = false;
 
 void d_i2c_init() {
-  d_i2c_mutex_create();
-
-  d_i2c_mutex_take();
-
   if (is_i2c_initialized)
     return;
 
@@ -52,7 +43,8 @@ void d_i2c_init() {
   is_i2c_initialized = true;
   LT_T("I2C initialized");
 
-  d_i2c_mutex_give();
+  if (!i2c_mutex)
+    i2c_mutex = xSemaphoreCreateMutex();
 }
 
 // Write

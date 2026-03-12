@@ -99,7 +99,7 @@ int main() {
   stdio_init_all();
   LT_I("Firmware starts");
 
-  d_i2c_mutex_create();
+  d_i2c_init();
 
   xTaskCreate(blink_task, "blink", 256, NULL, 1, NULL);
   xTaskCreate(imu_test_task, "imu_test", 512, NULL, 1, NULL);
