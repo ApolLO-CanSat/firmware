@@ -67,6 +67,7 @@ void baro_test_task(__unused void *params) {
 
 void lora_test_task(__unused void *params) {
   LT_I("lora_test_task starts");
+  vTaskDelay(2000 / portTICK_PERIOD_MS); // temp fix, idk why it works
   bool ok = d_lora_init(435.0f, SX1278_BW_125_00_KHZ, SX1278_SF_9, SX1278_CR_4_5);
   if (!ok) {
     LT_E("LoRa init failed");

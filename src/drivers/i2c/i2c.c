@@ -3,6 +3,7 @@
 #include "pico/stdlib.h"
 
 #include "FreeRTOS.h"
+#include "portmacro.h"
 #include "semphr.h"
 
 #include "drivers/lt_logger/lt_logger.h"
@@ -38,6 +39,10 @@ void d_i2c_init() {
   }
 
   LT_T("Initializing I2C");
+  
+  UBaseType_t old_affinity = vTaskCoreAffinityGet(NULL);
+  vTaskCoreAffinitySet(NULL, 1 << portGET_CORE_ID());
+  taskENTER_CRITICAL();
 
   i2c_init(i2c_default, 400 * 1000);
   gpio_set_function(PICO_DEFAULT_I2C_SDA_PIN, GPIO_FUNC_I2C);
@@ -46,6 +51,9 @@ void d_i2c_init() {
   gpio_pull_up(PICO_DEFAULT_I2C_SCL_PIN);
   bi_decl(bi_2pins_with_func(PICO_DEFAULT_I2C_SDA_PIN, PICO_DEFAULT_I2C_SCL_PIN, GPIO_FUNC_I2C));
 
+  taskEXIT_CRITICAL();
+  vTaskCoreAffinitySet(NULL, old_affinity);
+  
   is_i2c_initialized = true;
   LT_T("I2C initialized");
 
@@ -56,7 +64,16 @@ void d_i2c_init() {
 int d_i2c_write_unsafe(uint8_t addr, const uint8_t *src, size_t len, bool nostop) {
   if (!is_i2c_initialized)
     return PICO_ERROR_GENERIC;
-  return i2c_write_blocking(i2c_default, addr, src, len, nostop);
+
+  UBaseType_t old_affinity = vTaskCoreAffinityGet(NULL);
+  vTaskCoreAffinitySet(NULL, 1 << portGET_CORE_ID());
+  taskENTER_CRITICAL();
+
+  int res = i2c_write_blocking(i2c_default, addr, src, len, nostop);
+
+  taskEXIT_CRITICAL();
+  vTaskCoreAffinitySet(NULL, old_affinity);
+  return res;
 }
 
 int d_i2c_write(uint8_t addr, const uint8_t *src, size_t len, bool nostop) {
@@ -70,7 +87,16 @@ int d_i2c_write(uint8_t addr, const uint8_t *src, size_t len, bool nostop) {
 int d_i2c_read_unsafe(uint8_t addr, uint8_t *dst, size_t len, bool nostop) {
   if (!is_i2c_initialized)
     return PICO_ERROR_GENERIC;
-  return i2c_read_blocking(i2c_default, addr, dst, len, nostop);
+
+  UBaseType_t old_affinity = vTaskCoreAffinityGet(NULL);
+  vTaskCoreAffinitySet(NULL, 1 << portGET_CORE_ID());
+  taskENTER_CRITICAL();
+
+  int res = i2c_read_blocking(i2c_default, addr, dst, len, nostop);
+
+  taskEXIT_CRITICAL();
+  vTaskCoreAffinitySet(NULL, old_affinity);
+  return res;
 }
 
 int d_i2c_read(uint8_t addr, uint8_t *dst, size_t len, bool nostop) {

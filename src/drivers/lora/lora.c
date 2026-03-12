@@ -72,7 +72,16 @@ static uint8_t reg_read(uint8_t reg) {
   uint8_t tx[2] = {reg & 0x7F, 0x00};
   uint8_t rx[2] = {0};
   gpio_put(PICO_DEFAULT_SPI_CSN_PIN, 0);
+  
+  UBaseType_t old_affinity = vTaskCoreAffinityGet(NULL);
+  vTaskCoreAffinitySet(NULL, 1 << portGET_CORE_ID());
+  taskENTER_CRITICAL();
+  
   spi_write_read_blocking(spi_default, tx, rx, 2);
+
+  taskEXIT_CRITICAL();
+  vTaskCoreAffinitySet(NULL, old_affinity);
+  
   gpio_put(PICO_DEFAULT_SPI_CSN_PIN, 1);
   return rx[1];
 }
@@ -80,7 +89,16 @@ static uint8_t reg_read(uint8_t reg) {
 static void reg_write(uint8_t reg, uint8_t value) {
   uint8_t tx[2] = {reg | 0x80, value};
   gpio_put(PICO_DEFAULT_SPI_CSN_PIN, 0);
+  
+  UBaseType_t old_affinity = vTaskCoreAffinityGet(NULL);
+  vTaskCoreAffinitySet(NULL, 1 << portGET_CORE_ID());
+  taskENTER_CRITICAL();
+  
   spi_write_blocking(spi_default, tx, 2);
+
+  taskEXIT_CRITICAL();
+  vTaskCoreAffinitySet(NULL, old_affinity);
+  
   gpio_put(PICO_DEFAULT_SPI_CSN_PIN, 1);
 }
 
@@ -93,16 +111,34 @@ static void reg_write_masked(uint8_t reg, uint8_t value, uint8_t msb, uint8_t ls
 static void fifo_read_burst(uint8_t *data, uint8_t length) {
   uint8_t addr = SX1278_REG_FIFO & 0x7F;
   gpio_put(PICO_DEFAULT_SPI_CSN_PIN, 0);
+  
+  UBaseType_t old_affinity = vTaskCoreAffinityGet(NULL);
+  vTaskCoreAffinitySet(NULL, 1 << portGET_CORE_ID());
+  taskENTER_CRITICAL();
+  
   spi_write_blocking(spi_default, &addr, 1);
   spi_read_blocking(spi_default, 0x00, data, length);
+
+  taskEXIT_CRITICAL();
+  vTaskCoreAffinitySet(NULL, old_affinity);
+  
   gpio_put(PICO_DEFAULT_SPI_CSN_PIN, 1);
 }
 
 static void fifo_write_burst(const uint8_t *data, uint8_t length) {
   uint8_t addr = SX1278_REG_FIFO | 0x80;
   gpio_put(PICO_DEFAULT_SPI_CSN_PIN, 0);
+  
+  UBaseType_t old_affinity = vTaskCoreAffinityGet(NULL);
+  vTaskCoreAffinitySet(NULL, 1 << portGET_CORE_ID());
+  taskENTER_CRITICAL();
+  
   spi_write_blocking(spi_default, &addr, 1);
   spi_write_blocking(spi_default, data, length);
+  
+  taskEXIT_CRITICAL();
+  vTaskCoreAffinitySet(NULL, old_affinity);
+  
   gpio_put(PICO_DEFAULT_SPI_CSN_PIN, 1);
 }
 
