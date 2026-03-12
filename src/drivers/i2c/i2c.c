@@ -28,8 +28,14 @@ void d_i2c_mutex_give() {
 static bool is_i2c_initialized = false;
 
 void d_i2c_init() {
-  if (is_i2c_initialized)
+  if (!i2c_mutex)
+    i2c_mutex = xSemaphoreCreateMutex();
+  d_i2c_mutex_take();
+
+  if (is_i2c_initialized) {
+    d_i2c_mutex_give();
     return;
+  }
 
   LT_T("Initializing I2C");
 
@@ -43,8 +49,7 @@ void d_i2c_init() {
   is_i2c_initialized = true;
   LT_T("I2C initialized");
 
-  if (!i2c_mutex)
-    i2c_mutex = xSemaphoreCreateMutex();
+  d_i2c_mutex_give();
 }
 
 // Write
