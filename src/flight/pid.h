@@ -1,9 +1,5 @@
 #pragma once
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 typedef struct PIDController {
     const float Kp;
     const float Ki;
@@ -33,7 +29,3 @@ extern PIDController pid_yaw_rate;
 extern PIDController pid_yaw_limiter;
 
 int pid(float current, float target, PIDController *ctl);
-
-#ifdef __cplusplus
-}
-#endif
