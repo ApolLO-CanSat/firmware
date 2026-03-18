@@ -1,0 +1,44 @@
+#pragma once
+
+#include <stdint.h>
+#include <stdbool.h>
+
+typedef enum {
+    FM_DISARM = 0,
+    FM_READY = 1,
+    FM_GYRO = 2,
+    FM_ANGLE = 3,
+    FM_GPS_STBL = 4,
+    FM_GPS_WPT = 5
+} flight_mode_t;
+
+typedef struct {
+    flight_mode_t mode;
+    
+    // Setpoints
+    float target_roll;
+    float target_pitch;
+    float target_yaw;
+    float target_throttle;
+    float target_alt;
+    
+    // Telemetry / Current State (for other threads)
+    float current_roll;
+    float current_pitch;
+    float current_yaw;
+    float current_alt;
+    float current_vertical_speed;
+    
+    // Motor outputs (150-2047)
+    int motor_fr;
+    int motor_fl;
+    int motor_br;
+    int motor_bl;
+
+    // Armed status
+    bool armed;
+} autopilot_state_t;
+
+extern autopilot_state_t autopilot_state;
+
+void autopilot_init();

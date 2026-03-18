@@ -1,5 +1,9 @@
 #pragma once
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct PIDController {
     const float Kp;
     const float Ki;
@@ -12,20 +16,24 @@ typedef struct PIDController {
     const float integral_min;
 } PIDController;
 
-PIDController pid_altitude_rate;
-PIDController pid_alt_limiter; // limiter = altitude. only P-term. might make a new func later to make this faster.
+extern PIDController pid_altitude_rate;
+extern PIDController pid_alt_limiter;
 
-PIDController pid_roll_rate;
-PIDController pid_roll_angle;
-PIDController pid_y_speed; // only P and I, no D.
-PIDController pid_y_speed_limiter; // here, limiter = y-position (relative to aircraft rotation). P only like above
+extern PIDController pid_roll_rate;
+extern PIDController pid_roll_angle;
+extern PIDController pid_y_speed;
+extern PIDController pid_y_speed_limiter;
 
-PIDController pid_pitch_rate;
-PIDController pid_pitch_angle;
-PIDController pid_x_speed; // same as above but for x
-PIDController pid_x_speed_limiter; // same as above but for x
+extern PIDController pid_pitch_rate;
+extern PIDController pid_pitch_angle;
+extern PIDController pid_x_speed;
+extern PIDController pid_x_speed_limiter;
 
-PIDController pid_yaw_rate; // idk if this should have D term but lets leave it at 0 for now
-PIDController pid_yaw_limiter; // limiter = angle, P only.
+extern PIDController pid_yaw_rate;
+extern PIDController pid_yaw_limiter;
 
 int pid(float current, float target, PIDController *ctl);
+
+#ifdef __cplusplus
+}
+#endif
