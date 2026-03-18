@@ -4,7 +4,7 @@
 #include <stdbool.h>
 
 #include "FreeRTOS.h"
-#include "semphr.h"
+#include "queue.h"
 
 typedef enum {
     FM_DISARM = 0,
@@ -19,15 +19,36 @@ typedef struct {
     flight_mode_t mode;
     
     // Setpoints
-    float target_roll_angle;    // Target angle in degrees
-    float target_pitch_angle;   // Target angle in degrees
-    float target_yaw_rate;      // Target yaw rate
-    float target_roll_rate;     // Calculated by Angle task for Gyro task
-    float target_pitch_rate;    // Calculated by Angle task for Gyro task
+    float roll_angle;
+    float pitch_angle;
+    float yaw_rate;
+    float roll_rate;
+    float pitch_rate;
+    
+    float throttle;
+    float altitude;
+    float vertical_speed;
+    
+    // GPS / Navigation
+    double lat;
+    double lon;
+    float speed;
+} autopilot_command_t;
+
+typedef struct {
+    flight_mode_t mode;
+    
+    // Setpoints (Updated by respective PID tasks)
+    float target_roll_angle; 
+    float target_pitch_angle;
+    float target_yaw_rate;    
+    float target_roll_rate;   
+    float target_pitch_rate;  
     float target_throttle;
     float target_alt;
+    float target_vertical_speed;
     
-    // Telemetry / Current State (for other threads)
+    // Telemetry / Current State
     float current_roll;
     float current_pitch;
     float current_yaw;
@@ -42,11 +63,15 @@ typedef struct {
 
     // Armed status
     bool armed;
-
-    // Mutex for state synchronization
-    SemaphoreHandle_t mutex;
 } autopilot_state_t;
 
 extern autopilot_state_t autopilot_state;
 
+// Separate queues for each control loop to avoid interference
+extern QueueHandle_t q_gyro;
+extern QueueHandle_t q_angle;
+extern QueueHandle_t q_altitude;
+extern QueueHandle_t q_gps;
+
 void autopilot_init();
+void autopilot_send_command(autopilot_command_t *cmd);
