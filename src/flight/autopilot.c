@@ -34,32 +34,46 @@ void task_gyro(void *params) {
     int16_t raw_accel[3], raw_gyro[3], raw_temp;
     
     while (1) {
-        if (autopilot_state.mode >= FM_GYRO) {
-            d_imu_read_raw(raw_accel, raw_gyro, &raw_temp);
-            
-            // Simple LPF for gyro
-            for (int i=0; i<3; i++) {
-                gyro_filtered[i] = gyro_filtered[i] * (1.0f - alpha_gyro) + (float)raw_gyro[i] * alpha_gyro;
+        // LOCK-FREE READ of mode and targets for jitter-free 1kHz performance
+        // High-level tasks (Angle/Alti) update these values once per their loop
+        flight_mode_t current_mode = autopilot_state.mode;
+        float target_r = autopilot_state.target_roll;
+        float target_p = autopilot_state.target_pitch;
+        float target_y = autopilot_state.target_yaw;
+        float throttle = autopilot_state.target_throttle;
+
+        if (current_mode >= FM_READY) {
+            if (current_mode >= FM_GYRO) {
+                d_imu_read_raw(raw_accel, raw_gyro, &raw_temp);
+                
+                // Simple LPF for gyro
+                for (int i=0; i<3; i++) {
+                    gyro_filtered[i] = gyro_filtered[i] * (1.0f - alpha_gyro) + (float)raw_gyro[i] * alpha_gyro;
+                }
+
+                // In FM_GYRO, we PID against target rates
+                int r_out = pid(gyro_filtered[0], target_r, &pid_roll_rate);
+                int p_out = pid(gyro_filtered[1], target_p, &pid_pitch_rate);
+                int y_out = pid(gyro_filtered[2], target_y, &pid_yaw_rate);
+
+                // Mix and set motor values (Writing to state is fine as only this task writes motor outputs)
+                autopilot_state.motor_fr = mixer_fr(throttle, r_out, p_out, y_out);
+                autopilot_state.motor_fl = mixer_fl(throttle, r_out, p_out, y_out);
+                autopilot_state.motor_br = mixer_br(throttle, r_out, p_out, y_out);
+                autopilot_state.motor_bl = mixer_bl(throttle, r_out, p_out, y_out);
+            } else {
+                // READY (1) -> Motors idle
+                autopilot_state.motor_fr = 150;
+                autopilot_state.motor_fl = 150;
+                autopilot_state.motor_br = 150;
+                autopilot_state.motor_bl = 150;
             }
-
-            // In FM_GYRO, we PID against target rates
-            // Usually, target_roll/pitch would be converted to deg/s
-            int r_out = pid(gyro_filtered[0], autopilot_state.target_roll, &pid_roll_rate);
-            int p_out = pid(gyro_filtered[1], autopilot_state.target_pitch, &pid_pitch_rate);
-            int y_out = pid(gyro_filtered[2], autopilot_state.target_yaw, &pid_yaw_rate);
-
-            // Mix and set motor values
-            autopilot_state.motor_fr = mixer_fr(autopilot_state.target_throttle, r_out, p_out, y_out);
-            autopilot_state.motor_fl = mixer_fl(autopilot_state.target_throttle, r_out, p_out, y_out);
-            autopilot_state.motor_br = mixer_br(autopilot_state.target_throttle, r_out, p_out, y_out);
-            autopilot_state.motor_bl = mixer_bl(autopilot_state.target_throttle, r_out, p_out, y_out);
         } else {
-            // DISARM (0) or READY (1) -> Motors off or idle
-            int idle_val = (autopilot_state.mode == FM_READY) ? 150 : 0;
-            autopilot_state.motor_fr = idle_val;
-            autopilot_state.motor_fl = idle_val;
-            autopilot_state.motor_br = idle_val;
-            autopilot_state.motor_bl = idle_val;
+            // DISARM (0) -> Force motors to 0
+            autopilot_state.motor_fr = 0;
+            autopilot_state.motor_fl = 0;
+            autopilot_state.motor_br = 0;
+            autopilot_state.motor_bl = 0;
         }
 
         vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(1000 / GYRO_LOOP_HZ));
@@ -71,13 +85,14 @@ void task_angle(void *params) {
     TickType_t last_wake = xTaskGetTickCount();
     while (1) {
         if (autopilot_state.mode >= FM_ANGLE) {
-            // Placeholder: Fuse Accel + Gyro to get current_roll/pitch
-            // For now, let's pretend we have a simple integrator
-            // In a real drone, this would be a Complementary Filter or Kalman Filter
-            
-            // Update rate targets for the 1kHz loop
-            autopilot_state.target_roll = pid(autopilot_state.current_roll, 0.0f /* setpoint */, &pid_roll_angle);
-            autopilot_state.target_pitch = pid(autopilot_state.current_pitch, 0.0f /* setpoint */, &pid_pitch_angle);
+            if (xSemaphoreTake(autopilot_state.mutex, portMAX_DELAY) == pdTRUE) {
+                // Re-check inside mutex to be safe against mode changes during wait
+                if (autopilot_state.mode >= FM_ANGLE) {
+                    autopilot_state.target_roll = pid(autopilot_state.current_roll, 0.0f, &pid_roll_angle);
+                    autopilot_state.target_pitch = pid(autopilot_state.current_pitch, 0.0f, &pid_pitch_angle);
+                }
+                xSemaphoreGive(autopilot_state.mutex);
+            }
         }
         vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(1000 / ANGLE_LOOP_HZ));
     }
@@ -90,22 +105,21 @@ void task_altitude(void *params) {
     float last_alt = 0.0f;
 
     while (1) {
-        if (autopilot_state.mode >= FM_ANGLE) { // Altitude often coupled with angle/stable modes
-            d_baro_read(&raw_temp, &raw_press);
-            // Conversion to meters (simplified)
-            float pressure_hpa = raw_press / 100.0f;
-            autopilot_state.current_alt = 44330.0 * (1.0 - pow(pressure_hpa / 1013.25, 1.0 / 5.255));
-            
-            float dt = 1.0f / ALTI_LOOP_HZ;
-            autopilot_state.current_vertical_speed = (autopilot_state.current_alt - last_alt) / dt;
-            last_alt = autopilot_state.current_alt;
+        if (autopilot_state.mode >= FM_ANGLE) {
+            if (xSemaphoreTake(autopilot_state.mutex, portMAX_DELAY) == pdTRUE) {
+                if (autopilot_state.mode >= FM_ANGLE) {
+                    d_baro_read(&raw_temp, &raw_press);
+                    float pressure_hpa = raw_press / 100.0f;
+                    autopilot_state.current_alt = 44330.0 * (1.0 - pow(pressure_hpa / 1013.25, 1.0 / 5.255));
+                    
+                    float dt = 1.0f / ALTI_LOOP_HZ;
+                    autopilot_state.current_vertical_speed = (autopilot_state.current_alt - last_alt) / dt;
+                    last_alt = autopilot_state.current_alt;
 
-            // Alt limiter (Position P) -> Alt rate (Velocity PID)
-            float rate_target = pid(autopilot_state.current_alt, autopilot_state.target_alt, &pid_alt_limiter);
-            float throttle_adjust = pid(autopilot_state.current_vertical_speed, rate_target, &pid_altitude_rate);
-            
-            // Adjust base throttle (this is simplified)
-            // autopilot_state.target_throttle = throttle_adjust; 
+                    float rate_target = pid(autopilot_state.current_alt, autopilot_state.target_alt, &pid_alt_limiter);
+                }
+                xSemaphoreGive(autopilot_state.mutex);
+            }
         }
         vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(1000 / ALTI_LOOP_HZ));
     }
@@ -116,12 +130,12 @@ void task_gps(void *params) {
     TickType_t last_wake = xTaskGetTickCount();
     while (1) {
         if (autopilot_state.mode >= FM_GPS_STBL) {
-            // Calculate XY speeds and feed into speed limiters
-            // Output targets for Pitch/Roll (Angle loop)
-            // Yaw also handled here usually if heading-constrained
-            
-            // pid(current_x_speed, target_x_speed, &pid_x_speed_limiter);
-            // ...
+            if (xSemaphoreTake(autopilot_state.mutex, portMAX_DELAY) == pdTRUE) {
+                if (autopilot_state.mode >= FM_GPS_STBL) {
+                    // GPS logic...
+                }
+                xSemaphoreGive(autopilot_state.mutex);
+            }
         }
         vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(1000 / GPS_LOOP_HZ));
     }
@@ -129,6 +143,12 @@ void task_gps(void *params) {
 
 void autopilot_init() {
     LT_I("Initializing Autopilot tasks...");
+    
+    autopilot_state.mutex = xSemaphoreCreateMutex();
+    if (autopilot_state.mutex == NULL) {
+        LT_E("Failed to create autopilot mutex");
+        return;
+    }
     
     xTaskCreate(task_gyro, "ap_gyro", 1024, NULL, 5, NULL);
     xTaskCreate(task_angle, "ap_angle", 1024, NULL, 4, NULL);

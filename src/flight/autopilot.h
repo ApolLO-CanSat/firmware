@@ -3,6 +3,9 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#include "FreeRTOS.h"
+#include "semphr.h"
+
 typedef enum {
     FM_DISARM = 0,
     FM_READY = 1,
@@ -37,6 +40,9 @@ typedef struct {
 
     // Armed status
     bool armed;
+
+    // Mutex for state synchronization
+    SemaphoreHandle_t mutex;
 } autopilot_state_t;
 
 extern autopilot_state_t autopilot_state;
