@@ -18,3 +18,4 @@ void planner_init();
 void planner_task(void *params);
 void planner_start();
 void planner_stop();
+void planner_set_state(planner_state_t state);
