@@ -14,6 +14,26 @@
 #include "drivers/lora/lora.h"
 #include "drivers/lt_logger/lt_logger.h"
 #include "drivers/i2c/i2c.h"
+#include "flight/autopilot.h"
+
+/*
+void telemetry_task(__unused void *params) {
+  LT_I("telemetry_task starts (waiting for friend)");
+  while (true) {
+    LT_D("ALT: %.2f MODE: %d MOTORS: %d %d %d %d GYRO: %.2f %.2f %.2f ACCEL: %.2f %.2f %.2f", 
+      autopilot_state.current_alt,
+      autopilot_state.mode,
+      autopilot_state.motor_fr,
+      autopilot_state.motor_fl,
+      autopilot_state.motor_br,
+      autopilot_state.motor_bl,
+      gyro_filtered[0], gyro_filtered[1], gyro_filtered[2],
+      accel_filtered[0], accel_filtered[1], accel_filtered[2]);
+      // todo: more telem (my part) + send by lora (not my part)
+    vTaskDelay(pdMS_TO_TICKS(200)); 
+  }
+}
+*/
 
 void blink_task(__unused void *params) {
   bool on = false;
@@ -99,6 +119,15 @@ int main() {
   bi_decl(bi_program_description("ApolLO CanSat firmware"));
   stdio_init_all();
   LT_I("Firmware starts");
+
+  /*
+  // Drivers initialization (for "new firmware" and not this test_task dogshit :D )
+  d_imu_init();
+  d_baro_init();
+  autopilot_init();
+
+  xTaskCreate(telemetry_task, "telem", 512, NULL, 1, NULL);
+  */
 
   xTaskCreate(blink_task, "blink", 256, NULL, 1, NULL);
   xTaskCreate(imu_test_task, "imu_test", 512, NULL, 1, NULL);
