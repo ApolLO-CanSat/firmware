@@ -19,9 +19,11 @@ typedef struct {
     flight_mode_t mode;
     
     // Setpoints
-    float target_roll;
-    float target_pitch;
-    float target_yaw;
+    float target_roll_angle;    // Target angle in degrees
+    float target_pitch_angle;   // Target angle in degrees
+    float target_yaw_rate;      // Target yaw rate
+    float target_roll_rate;     // Calculated by Angle task for Gyro task
+    float target_pitch_rate;    // Calculated by Angle task for Gyro task
     float target_throttle;
     float target_alt;
     
