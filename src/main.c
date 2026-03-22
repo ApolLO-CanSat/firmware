@@ -109,8 +109,13 @@ void lora_test_task(__unused void *params) {
     while (d_lora_receive(&rx, 0)) {
       rx.data[rx.length] = '\0';
       LT_D("LoRa RX: \"%s\" (RSSI: %d, SNR: %d)", (char *)rx.data, rx.rssi, rx.snr);
+      // echo the packet back cuz szymala asked for it >:(
+      if (d_lora_send(rx.data, rx.length)) {
+        LT_D("LoRa Echo TX: \"%s\"", (char *)rx.data);
+      } else {
+        LT_W("LoRa Echo TX failed");
+      }
     }
-
     vTaskDelay(pdMS_TO_TICKS(2000));
   }
 }
