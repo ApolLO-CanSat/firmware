@@ -16,6 +16,8 @@
 #include "drivers/i2c/i2c.h"
 #include "flight/autopilot.h"
 #include "flight/planner.h"
+#include <string.h>
+#include <stdlib.h>
 
 /*void blink_task(__unused void *params) {
   bool on = false;
@@ -130,16 +132,57 @@ void lora_receive_task(__unused void *params) {
   lora_rx_packet_t rx;
   while (true) {
     if (d_lora_receive(&rx, portMAX_DELAY)) {
-      rx.data[rx.length] = '\0';
+      if (rx.length < LORA_MAX_PKT_LENGTH) {
+        rx.data[rx.length] = '\0';
+      }
       LT_D("LoRa RX: \"%s\" (RSSI: %d, SNR: %d)", (char *)rx.data, rx.rssi, rx.snr);
-      // and echo back
-      if (d_lora_send(rx.data, rx.length)) {
-        LT_D("LoRa Echo TX: \"%s\"", (char *)rx.data);
+      // check if AP cmd, format: "APCMD:MODE,ROLL,PITCH,YAW,THROTTLE,ALTITUDE,LAT,LON", if not then echo back
+      if (strncmp((char *)rx.data, "APCMD:", 6) == 0) {
+        // Process AP command
+        char *token = strtok((char *)rx.data + 6, ",");
+        if (token) {
+          autopilot_command_t cmd;
+          memset(&cmd, 0, sizeof(cmd));
+          cmd.mode = (flight_mode_t)atoi(token);
+          
+          token = strtok(NULL, ",");
+          cmd.roll_angle = token ? (float)atof(token) : 0.0f;
+          token = strtok(NULL, ",");
+          cmd.pitch_angle = token ? (float)atof(token) : 0.0f;
+          token = strtok(NULL, ",");
+          cmd.yaw_rate = token ? (float)atof(token) : 0.0f;
+          token = strtok(NULL, ",");
+          cmd.throttle = token ? (float)atof(token) : 0.0f;
+          token = strtok(NULL, ",");
+          cmd.altitude = token ? (float)atof(token) : 0.0f;
+          token = strtok(NULL, ",");
+          cmd.lat = token ? atof(token) : 0.0;
+          token = strtok(NULL, ",");
+          cmd.lon = token ? atof(token) : 0.0;
+
+          autopilot_send_command(&cmd);
+          LT_I("Processed AP Command: MODE=%d, ROLL=%.1f, PITCH=%.1f, YAW=%.1f, THROTTLE=%.1f, ALT=%.1f, LAT=%.6f, LON=%.6f",
+            cmd.mode, cmd.roll_angle, cmd.pitch_angle, cmd.yaw_rate, cmd.throttle, cmd.altitude, cmd.lat, cmd.lon);
+          // and transmit an ack
+          char ack_msg[16] = "ACK APCMD DONE!";
+          if (d_lora_send_string(ack_msg)) {
+            LT_D("LoRa ACK TX: %s", ack_msg);
+          } else {
+            LT_W("LoRa ACK TX failed");
+          }
+
+        } else {
+          LT_W("Invalid AP Command format");
+        }
       } else {
-        LT_W("LoRa Echo TX failed");
+        // echo back only if not a command
+        if (d_lora_send(rx.data, rx.length)) {
+          LT_D("LoRa Echo TX: \"%s\"", (char *)rx.data);
+        } else {
+          LT_W("LoRa Echo TX failed");
+        }
       }
     }
-    vTaskDelay(pdMS_TO_TICKS(100)); // cpu hog would be mad if not for this lmao
   }
 }
 
