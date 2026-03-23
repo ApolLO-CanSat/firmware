@@ -16,7 +16,7 @@
 #include "drivers/i2c/i2c.h"
 #include "flight/autopilot.h"
 
-void blink_task(__unused void *params) {
+/*void blink_task(__unused void *params) {
   bool on = false;
   LT_I("blink_task starts");
   d_led_init();
@@ -66,6 +66,7 @@ void baro_test_task(__unused void *params) {
   }
 }
 
+
 void lora_test_task(__unused void *params) {
   LT_I("lora_test_task starts");
   vTaskDelay(2000 / portTICK_PERIOD_MS); // temp fix, idk why it works
@@ -98,7 +99,7 @@ void lora_test_task(__unused void *params) {
     while (d_lora_receive(&rx, 0)) {
       rx.data[rx.length] = '\0';
       LT_D("LoRa RX: \"%s\" (RSSI: %d, SNR: %d)", (char *)rx.data, rx.rssi, rx.snr);
-      // echo the packet back cuz szymala asked for it >:(
+      // echo the packet back
       if (d_lora_send(rx.data, rx.length)) {
         LT_D("LoRa Echo TX: \"%s\"", (char *)rx.data);
       } else {
@@ -109,25 +110,60 @@ void lora_test_task(__unused void *params) {
   }
 }
 
+
+
+
+
+
+// if you insist...
+xTaskCreate(blink_task, "blink", 256, NULL, 1, NULL);
+xTaskCreate(imu_test_task, "imu_test", 512, NULL, 1, NULL);
+xTaskCreate(baro_test_task, "baro_test", 512, NULL, 1, NULL);
+xTaskCreate(lora_test_task, "lora_test", 1024, NULL, 1, NULL);
+*/
+
+
+
+void lora_receive_task(__unused void *params) {
+  LT_I("lora_receive_task starts");
+  lora_rx_packet_t rx;
+  while (true) {
+    if (d_lora_receive(&rx, portMAX_DELAY)) {
+      rx.data[rx.length] = '\0';
+      LT_D("LoRa RX: \"%s\" (RSSI: %d, SNR: %d)", (char *)rx.data, rx.rssi, rx.snr);
+      // and echo back
+      if (d_lora_send(rx.data, rx.length)) {
+        LT_D("LoRa Echo TX: \"%s\"", (char *)rx.data);
+      } else {
+        LT_W("LoRa Echo TX failed");
+      }
+    }
+    vTaskDelay(pdMS_TO_TICKS(100)); // small delay to prevent task hogging CPU if messages are coming in very fast
+  }
+}
+
 int main() {
   bi_decl(bi_program_description("ApolLO CanSat firmware"));
   stdio_init_all();
-  LT_I("Firmware starts");
-
-  /*
-  // Drivers initialization (for "new firmware" and not this test_task dogshit :D )
+  LT_I("Firmware starts NOW!");
+  T_I("LoRa init");
+  if (!d_lora_init(435.0f, SX1278_BW_125_00_KHZ, SX1278_SF_9, SX1278_CR_4_5)) {
+    while (true) {
+      LT_E("LoRa failed, please restart!");
+      sleep_ms(1000);
+    }
+  }
+  xTaskCreate(lora_receive_task, "lora_receive", 1024, NULL, 2, NULL);
+  LT_I("IMU init");
   d_imu_init();
+  LT_I("Baro init");
   d_baro_init();
+  LT_I("Autopilot init");
   autopilot_init();
 
-  xTaskCreate(telemetry_task, "telem", 512, NULL, 1, NULL);
-  */
+  planner_init();
 
-  xTaskCreate(blink_task, "blink", 256, NULL, 1, NULL);
-  xTaskCreate(imu_test_task, "imu_test", 512, NULL, 1, NULL);
-  xTaskCreate(baro_test_task, "baro_test", 512, NULL, 1, NULL);
-  xTaskCreate(lora_test_task, "lora_test", 1024, NULL, 1, NULL);
-
+  
   vTaskStartScheduler();
   LT_E("Scheduler exited unexpectedly");
 }
