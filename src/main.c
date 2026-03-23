@@ -16,25 +16,6 @@
 #include "drivers/i2c/i2c.h"
 #include "flight/autopilot.h"
 
-/*
-void telemetry_task(__unused void *params) {
-  LT_I("telemetry_task starts (waiting for friend)");
-  while (true) {
-    LT_D("ALT: %.2f MODE: %d MOTORS: %d %d %d %d GYRO: %.2f %.2f %.2f ACCEL: %.2f %.2f %.2f", 
-      autopilot_state.current_alt,
-      autopilot_state.mode,
-      autopilot_state.motor_fr,
-      autopilot_state.motor_fl,
-      autopilot_state.motor_br,
-      autopilot_state.motor_bl,
-      gyro_filtered[0], gyro_filtered[1], gyro_filtered[2],
-      accel_filtered[0], accel_filtered[1], accel_filtered[2]);
-      // todo: more telem (my part) + send by lora (not my part)
-    vTaskDelay(pdMS_TO_TICKS(200)); 
-  }
-}
-*/
-
 void blink_task(__unused void *params) {
   bool on = false;
   LT_I("blink_task starts");
@@ -97,13 +78,21 @@ void lora_test_task(__unused void *params) {
 
   uint32_t counter = 0;
   while (true) {
-    char msg[64];
-    snprintf(msg, sizeof(msg), "ApolLO #%lu", (unsigned long)counter++);
+    char msg[128];
+    snprintf(msg, sizeof(msg), "ALT:%.2f M:%d MOT:%d %d %d %d", 
+      autopilot_state.current_alt,
+      autopilot_state.mode,
+      autopilot_state.motor_fr,
+      autopilot_state.motor_fl,
+      autopilot_state.motor_br,
+      autopilot_state.motor_bl);
+
     if (d_lora_send_string(msg)) {
-      LT_D("LoRa TX: \"%s\"", msg);
+      LT_D("LoRa Telem TX: %s", msg);
     } else {
-      LT_W("LoRa TX failed");
+      LT_W("LoRa Telem TX failed");
     }
+
 
     lora_rx_packet_t rx;
     while (d_lora_receive(&rx, 0)) {

@@ -61,7 +61,7 @@ void task_gyro(void *params) {
 
         if (current_mode >= FM_READY) {
             if (current_mode >= FM_GYRO) {
-                d_imu_read_raw(raw_accel, raw_gyro, &raw_temp);
+                d_imu_read_cal(raw_accel, raw_gyro, &raw_temp);
                 
                 for (int i=0; i<3; i++) {
                     gyro_filtered[i] = gyro_filtered[i] * (1.0f - alpha_gyro) + (float)raw_gyro[i] * alpha_gyro;
@@ -177,6 +177,9 @@ void task_gps(void *params) {
 
 void autopilot_init() {
     LT_I("Initializing Autopilot tasks...");
+    
+    LT_I("Performing IMU calibration...");
+    d_imu_calibrate();
     
     q_gyro = xQueueCreate(5, sizeof(autopilot_command_t));
     q_angle = xQueueCreate(5, sizeof(autopilot_command_t));
