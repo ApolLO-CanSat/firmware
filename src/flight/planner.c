@@ -161,6 +161,8 @@ void planner_task(void *params) {
 void planner_init() {
     LT_I("Initializing Planner...");
     xTaskCreate(planner_task, "planner", 1024, NULL, 2, NULL);
+    planner_running = false;
+    planner_set_state(PLANNER_STILL_ON_PARACHUTE);
 }
 
 void planner_start() {
