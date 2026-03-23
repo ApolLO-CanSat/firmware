@@ -20,6 +20,7 @@ QueueHandle_t q_gyro = NULL;
 QueueHandle_t q_angle = NULL;
 QueueHandle_t q_altitude = NULL;
 QueueHandle_t q_gps = NULL;
+QueueHandle_t q_imu_data = NULL;
 
 // Internal smoothing/filtering
 static float gyro_filtered[3] = {0,0,0};
@@ -37,7 +38,7 @@ static float alpha_accel = 0.05f;
 // --- GYRO TASK (1kHz) ---
 void task_gyro(void *params) {
     TickType_t last_wake = xTaskGetTickCount();
-    int16_t raw_accel[3], raw_gyro[3], raw_temp;
+    int16_t cal_accel[3], cal_gyro[3], cal_temp;
     autopilot_command_t cmd;
     
     while (1) {
@@ -61,10 +62,18 @@ void task_gyro(void *params) {
 
         if (current_mode >= FM_READY) {
             if (current_mode >= FM_GYRO) {
-                d_imu_read_cal(raw_accel, raw_gyro, &raw_temp);
+                d_imu_read_cal(cal_accel, cal_gyro, &cal_temp);
+
+                // Push accel and gyro data to IMU queue for other tasks
+                imu_data_t imu_msg;
+                for(int i=0; i<3; i++) {
+                    imu_msg.accel[i] = cal_accel[i];
+                    imu_msg.gyro[i] = cal_gyro[i];
+                }
+                xQueueSend(q_imu_data, &imu_msg, 0);
                 
                 for (int i=0; i<3; i++) {
-                    gyro_filtered[i] = gyro_filtered[i] * (1.0f - alpha_gyro) + (float)raw_gyro[i] * alpha_gyro;
+                    gyro_filtered[i] = gyro_filtered[i] * (1.0f - alpha_gyro) + (float)cal_gyro[i] * alpha_gyro;
                 }
 
                 int r_out = pid(gyro_filtered[0], target_r_rate, &pid_roll_rate);
@@ -96,6 +105,8 @@ void task_gyro(void *params) {
 void task_angle(void *params) {
     TickType_t last_wake = xTaskGetTickCount();
     autopilot_command_t cmd;
+    imu_data_t imu_data;
+    
     while (1) {
         // Read from angle-specific queue
         if (xQueueReceive(q_angle, &cmd, 0) == pdTRUE) {
@@ -105,6 +116,18 @@ void task_angle(void *params) {
                 autopilot_state.target_yaw_rate = cmd.yaw_rate;
                 autopilot_state.target_throttle = cmd.throttle;
             }
+        }
+
+        // Receive IMU data from the 1kHz task
+        while (xQueueReceive(q_imu_data, &imu_data, 0) == pdTRUE) {
+            // Roll: atan2(ay, az)
+            // Pitch: atan2(-ax, sqrt(ay^2 + az^2))
+            float roll_acc = atan2f((float)imu_data.accel[1], (float)imu_data.accel[2]) * 57.29578f;
+            float pitch_acc = atan2f(-(float)imu_data.accel[0], sqrtf((float)imu_data.accel[1]*(float)imu_data.accel[1] + (float)imu_data.accel[2]*(float)imu_data.accel[2])) * 57.29578f;
+
+            // Apply LPF to smooth out acceleration noise (alpha_accel)
+            autopilot_state.current_roll = autopilot_state.current_roll * (1.0f - alpha_accel) + roll_acc * alpha_accel;
+            autopilot_state.current_pitch = autopilot_state.current_pitch * (1.0f - alpha_accel) + pitch_acc * alpha_accel;
         }
 
         if (autopilot_state.mode >= FM_ANGLE) {
@@ -123,7 +146,7 @@ void task_angle(void *params) {
 // --- ALTITUDE TASK (150Hz) ---
 void task_altitude(void *params) {
     TickType_t last_wake = xTaskGetTickCount();
-    int32_t raw_temp, raw_press;
+    int32_t cal_temp, cal_press;
     float last_alt = 0.0f;
     autopilot_command_t cmd;
 
@@ -131,18 +154,19 @@ void task_altitude(void *params) {
         if (xQueueReceive(q_altitude, &cmd, 0) == pdTRUE) {
              // In altitude hold modes, we take altitude setpoint
              autopilot_state.target_alt = cmd.altitude;
-             // If not in GPS mode yet, we might still take roll/pitch/yaw from here if angle mode + alti
-             if (autopilot_state.mode == FM_ANGLE && cmd.altitude > 0) {
-                 // Hybrid mode handling could go here
-             }
         }
 
-        d_baro_read(&raw_temp, &raw_press);
-        float pressure_hpa = raw_press / 100.0f;
-        autopilot_state.current_alt = 44330.0 * (1.0 - pow(pressure_hpa / 1013.25, 1.0 / 5.255));
+        d_baro_read(&cal_temp, &cal_press);
+        float pressure_hpa = cal_press / 100.0f;
+        // Formula: 44330.0 * (1.0 - pow(pressure_hpa / 1013.25, 1.0 / 5.255))
+        float current_alt_raw = 44330.0f * (1.0f - powf(pressure_hpa / 1013.25f, 1.0f / 5.255f));
+        
+        // Use complementary or LPF filter for altitude
+        autopilot_state.current_alt = autopilot_state.current_alt * 0.9f + current_alt_raw * 0.1f;
                 
         float dt = 1.0f / ALTI_LOOP_HZ;
-        autopilot_state.current_vertical_speed = (autopilot_state.current_alt - last_alt) / dt;
+        float current_vs_raw = (autopilot_state.current_alt - last_alt) / dt;
+        autopilot_state.current_vertical_speed = autopilot_state.current_vertical_speed * 0.9f + current_vs_raw * 0.1f;
         last_alt = autopilot_state.current_alt;
 
         // If high level mode, update throttle based on alti PID
@@ -185,6 +209,7 @@ void autopilot_init() {
     q_angle = xQueueCreate(5, sizeof(autopilot_command_t));
     q_altitude = xQueueCreate(5, sizeof(autopilot_command_t));
     q_gps = xQueueCreate(5, sizeof(autopilot_command_t));
+    q_imu_data = xQueueCreate(10, sizeof(imu_data_t));
 
     xTaskCreate(task_gyro, "ap_gyro", 1024, NULL, 5, NULL);
     xTaskCreate(task_angle, "ap_angle", 1024, NULL, 4, NULL);

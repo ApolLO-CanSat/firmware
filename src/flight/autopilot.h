@@ -65,6 +65,11 @@ typedef struct {
     bool armed;
 } autopilot_state_t;
 
+typedef struct {
+    int16_t accel[3];
+    int16_t gyro[3];
+} imu_data_t;
+
 extern autopilot_state_t autopilot_state;
 
 // Separate queues for each control loop to avoid interference
@@ -72,6 +77,7 @@ extern QueueHandle_t q_gyro;
 extern QueueHandle_t q_angle;
 extern QueueHandle_t q_altitude;
 extern QueueHandle_t q_gps;
+extern QueueHandle_t q_imu_data;
 
 void autopilot_init();
 void autopilot_send_command(autopilot_command_t *cmd);
