@@ -76,6 +76,10 @@ void task_gyro(void *params) {
                     gyro_filtered[i] = gyro_filtered[i] * (1.0f - alpha_gyro) + (float)cal_gyro[i] * alpha_gyro;
                 }
 
+                autopilot_state.current_roll_rate = gyro_filtered[0];
+                autopilot_state.current_pitch_rate = gyro_filtered[1];
+                autopilot_state.current_yaw_rate = gyro_filtered[2];
+
                 int r_out = pid(gyro_filtered[0], target_r_rate, &pid_roll_rate);
                 int p_out = pid(gyro_filtered[1], target_p_rate, &pid_pitch_rate);
                 int y_out = pid(gyro_filtered[2], target_y_rate, &pid_yaw_rate);
@@ -190,6 +194,9 @@ void task_gps(void *params) {
                 // autopilot_state.target_lat = cmd.lat;
                 // autopilot_state.target_lon = cmd.lon;
             }
+            // Update horizontal speeds if GPS data or triangulation is available
+            autopilot_state.current_speed_x = cmd.speed; // Simplified: set speed as horizontal x for now
+            autopilot_state.current_speed_y = 0.0f; 
         }
 
         if (autopilot_state.mode >= FM_GPS_STBL) {

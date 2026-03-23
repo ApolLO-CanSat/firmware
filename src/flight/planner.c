@@ -179,6 +179,7 @@ void planner_stop() {
 void planner_set_state(planner_state_t state) {
     LT_I("Changing Planner State to %d", state);
     current_planner_state = state;
+    autopilot_state.planner_state = (int)state;
     state_timer = 0; // Reset timers for new state
     stability_timer = 0;
 }

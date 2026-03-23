@@ -52,6 +52,14 @@ typedef struct {
     float current_roll;
     float current_pitch;
     float current_yaw;
+    
+    float current_roll_rate;
+    float current_pitch_rate;
+    float current_yaw_rate;
+
+    float current_speed_x; // Relative to vehicle
+    float current_speed_y; // Relative to vehicle
+
     float current_alt;
     float current_vertical_speed;
     
@@ -63,6 +71,7 @@ typedef struct {
 
     // Armed status
     bool armed;
+    int planner_state;
 } autopilot_state_t;
 
 typedef struct {

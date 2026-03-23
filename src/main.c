@@ -15,6 +15,7 @@
 #include "drivers/lt_logger/lt_logger.h"
 #include "drivers/i2c/i2c.h"
 #include "flight/autopilot.h"
+#include "flight/planner.h"
 
 /*void blink_task(__unused void *params) {
   bool on = false;
@@ -125,7 +126,7 @@ xTaskCreate(lora_test_task, "lora_test", 1024, NULL, 1, NULL);
 
 
 void lora_receive_task(__unused void *params) {
-  LT_I("lora_receive_task starts");
+  LT_I("lora_receive_task starts NOW!");
   lora_rx_packet_t rx;
   while (true) {
     if (d_lora_receive(&rx, portMAX_DELAY)) {
@@ -138,7 +139,40 @@ void lora_receive_task(__unused void *params) {
         LT_W("LoRa Echo TX failed");
       }
     }
-    vTaskDelay(pdMS_TO_TICKS(100)); // small delay to prevent task hogging CPU if messages are coming in very fast
+    vTaskDelay(pdMS_TO_TICKS(100)); // cpu hog would be mad if not for this lmao
+  }
+}
+
+void lora_telemetry_task(__unused void *params) {
+  LT_I("lora_telemetry_task starts NOW!");
+  while (true) {
+    char msg[256];
+    // RPY(deg), RPY_rate(deg/s), XY_speed(m/s), ALT(m), VS(m/s), MODE(F,P,A), MOT(4)
+    snprintf(msg, sizeof(msg), "ANG:%.1f,%.1f,%.1f RT:%.1f,%.1f,%.1f SPD:%.2f,%.2f ALT:%.2f VS:%.2f FM:%d PM:%d ARM:%d MOT:%d,%d,%d,%d", 
+      autopilot_state.current_roll,
+      autopilot_state.current_pitch,
+      autopilot_state.current_yaw,
+      autopilot_state.current_roll_rate,
+      autopilot_state.current_pitch_rate,
+      autopilot_state.current_yaw_rate,
+      autopilot_state.current_speed_x,
+      autopilot_state.current_speed_y,
+      autopilot_state.current_alt,
+      autopilot_state.current_vertical_speed,
+      autopilot_state.mode,
+      autopilot_state.planner_state,
+      autopilot_state.armed,
+      autopilot_state.motor_fr,
+      autopilot_state.motor_fl,
+      autopilot_state.motor_br,
+      autopilot_state.motor_bl);
+
+    if (d_lora_send_string(msg)) {
+      LT_D("LoRa Telem TX: %s", msg);
+    } else {
+      LT_W("LoRa Telem TX failed");
+    }
+    vTaskDelay(pdMS_TO_TICKS(2000));
   }
 }
 
@@ -146,7 +180,7 @@ int main() {
   bi_decl(bi_program_description("ApolLO CanSat firmware"));
   stdio_init_all();
   LT_I("Firmware starts NOW!");
-  T_I("LoRa init");
+  LT_I("LoRa init");
   if (!d_lora_init(435.0f, SX1278_BW_125_00_KHZ, SX1278_SF_9, SX1278_CR_4_5)) {
     while (true) {
       LT_E("LoRa failed, please restart!");
