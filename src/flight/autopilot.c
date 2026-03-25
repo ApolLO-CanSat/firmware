@@ -1,6 +1,7 @@
 #include "autopilot.h"
 #include "pid.h"
 #include "mixer.h"
+#include "dshot.h"
 #include "../drivers/imu/imu.h"
 #include "../drivers/baro/baro.h"
 #include "../drivers/lt_logger/lt_logger.h"
@@ -341,6 +342,9 @@ void autopilot_init() {
     xTaskCreate(task_angle, "ap_angle", 1024, NULL, 4, NULL);
     xTaskCreate(task_altitude, "ap_alti", 1024, NULL, 3, NULL);
     xTaskCreate(task_gps, "ap_gps", 1024, NULL, 2, NULL);
+    
+    // Initialize DShot motor control
+    dshot_init();
 }
 
 void autopilot_send_command(autopilot_command_t *cmd) {
