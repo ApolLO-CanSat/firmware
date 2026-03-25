@@ -126,7 +126,6 @@ xTaskCreate(lora_test_task, "lora_test", 1024, NULL, 1, NULL);
 */
 
 
-
 void lora_receive_task(__unused void *params) {
   LT_I("lora_receive_task starts NOW!");
   lora_rx_packet_t rx;
