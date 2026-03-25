@@ -48,6 +48,11 @@ typedef struct {
     float target_alt;
     float target_vertical_speed;
     
+    // GPS Navigation targets
+    double target_lat;
+    double target_lon;
+    float target_yaw;
+    
     // Telemetry / Current State
     float current_roll;
     float current_pitch;
@@ -57,11 +62,19 @@ typedef struct {
     float current_pitch_rate;
     float current_yaw_rate;
 
-    float current_speed_x; // Relative to vehicle
-    float current_speed_y; // Relative to vehicle
+    float current_speed_x; // Relative to vehicle (m/s)
+    float current_speed_y; // Relative to vehicle (m/s)
+    
+    // GPS position and heading
+    double current_lat;
+    double current_lon;
+    float current_heading; // Compass heading from GPS (degrees)
 
     float current_alt;
     float current_vertical_speed;
+    
+    // GPS initialization flag
+    bool gps_targets_initialized;
     
     // Motor outputs (150-2047)
     int motor_fr;

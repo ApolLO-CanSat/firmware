@@ -13,7 +13,14 @@
 autopilot_state_t autopilot_state = {
     .mode = FM_DISARM,
     .armed = false,
-    .target_throttle = 0.0f
+    .target_throttle = 0.0f,
+    .target_lat = 0.0,
+    .target_lon = 0.0,
+    .target_yaw = 0.0f,
+    .current_lat = 0.0,
+    .current_lon = 0.0,
+    .current_heading = 0.0f,
+    .gps_targets_initialized = false
 };
 
 QueueHandle_t q_gyro = NULL;
@@ -28,6 +35,12 @@ static float accel_filtered[3] = {0,0,0};
 
 static float alpha_gyro = 0.1f; // Simple LPF alpha
 static float alpha_accel = 0.05f;
+
+// GPS navigation state
+static float last_target_lat = 0.0;
+static float last_target_lon = 0.0;
+static TickType_t yaw_limiter_stable_ticks = 0;
+static bool yaw_limiter_active = true;
 
 // Task loop constants
 #define GYRO_LOOP_HZ 1000
@@ -182,25 +195,131 @@ void task_altitude(void *params) {
     }
 }
 
+// Placeholder GPS reading function
+// TODO: Replace with actual GPS module driver calls
+typedef struct {
+    double latitude;
+    double longitude;
+    float horizontal_speed_x; // m/s
+    float horizontal_speed_y; // m/s
+    float compass_heading;    // degrees (0-360)
+    bool fix_valid;
+} gps_data_t;
+
+static gps_data_t placeholder_gps_read(void) {
+    gps_data_t gps = {
+        .latitude = 0.0,
+        .longitude = 0.0,
+        .horizontal_speed_x = 0.0f,
+        .horizontal_speed_y = 0.0f,
+        .compass_heading = 0.0f,
+        .fix_valid = false
+    };
+    // TODO: Implement actual GPS reading from GPS module
+    // gps.latitude = read_gps_latitude();
+    // gps.longitude = read_gps_longitude();
+    // gps.horizontal_speed_x = read_gps_speed_x();
+    // gps.horizontal_speed_y = read_gps_speed_y();
+    // gps.compass_heading = read_compass_heading();
+    // gps.fix_valid = check_gps_fix();
+    return gps;
+}
+
 // --- GPS/NAVIGATION TASK (5Hz) ---
 void task_gps(void *params) {
     TickType_t last_wake = xTaskGetTickCount();
     autopilot_command_t cmd;
     
     while (1) {
+        // Read GPS data from sensor
+        gps_data_t gps = placeholder_gps_read();
+        
+        if (gps.fix_valid) {
+            // Update current GPS position and heading
+            autopilot_state.current_lat = gps.latitude;
+            autopilot_state.current_lon = gps.longitude;
+            autopilot_state.current_heading = gps.compass_heading;
+            autopilot_state.current_speed_x = gps.horizontal_speed_x;
+            autopilot_state.current_speed_y = gps.horizontal_speed_y;
+            
+            // Initialize target lat/lon to current position if not yet set
+            // This prevents drift to 0,0 if targets are never commanded
+            if (!autopilot_state.gps_targets_initialized) {
+                autopilot_state.target_lat = gps.latitude;
+                autopilot_state.target_lon = gps.longitude;
+                autopilot_state.gps_targets_initialized = true;
+                last_target_lat = gps.latitude;
+                last_target_lon = gps.longitude;
+            }
+        }
+        
+        // Process GPS command updates
         if (xQueueReceive(q_gps, &cmd, 0) == pdTRUE) {
             if (autopilot_state.mode >= FM_GPS_STBL) {
-                // Take GPS targets
-                // autopilot_state.target_lat = cmd.lat;
-                // autopilot_state.target_lon = cmd.lon;
+                // Check if waypoint changed - if so, re-enable yaw limiter
+                if (cmd.lat != last_target_lat || cmd.lon != last_target_lon) {
+                    yaw_limiter_active = true;
+                    yaw_limiter_stable_ticks = 0;
+                    last_target_lat = cmd.lat;
+                    last_target_lon = cmd.lon;
+                }
+                // Update GPS targets from command
+                autopilot_state.target_lat = cmd.lat;
+                autopilot_state.target_lon = cmd.lon;
             }
-            // Update horizontal speeds if GPS data or triangulation is available
-            autopilot_state.current_speed_x = cmd.speed; // Simplified: set speed as horizontal x for now
-            autopilot_state.current_speed_y = 0.0f; 
         }
 
-        if (autopilot_state.mode >= FM_GPS_STBL) {
-            // Update roll/pitch angles based on GPS position/velocity PID
+        if (autopilot_state.mode >= FM_GPS_STBL && gps.fix_valid) {
+            // Simple position error calculation (will be more accurate with proper coordinate transform)
+            double lat_error = autopilot_state.target_lat - autopilot_state.current_lat;
+            double lon_error = autopilot_state.target_lon - autopilot_state.current_lon;
+            
+            // Scale lat/lon error to approximate meters (very simplified)
+            // At equator: 1 degree = ~111,000 meters
+            float lat_error_m = (float)lat_error * 111000.0f;
+            float lon_error_m = (float)lon_error * 111000.0f;
+            
+            // X speed control: limiter first, then speed PID
+            // Limiters constrain the ramp rate for position error input
+            int limited_desire_speed_x = pid(autopilot_state.current_speed_x, lat_error_m, &pid_x_speed_limiter);
+            // Speed PID: current speed vs limited desired speed
+            int target_speed_x = pid(autopilot_state.current_speed_x, (float)limited_desire_speed_x, &pid_x_speed);
+            autopilot_state.target_pitch_rate = (float)target_speed_x;
+            
+            // Y speed control: limiter first, then speed PID
+            int limited_desire_speed_y = pid(autopilot_state.current_speed_y, lon_error_m, &pid_y_speed_limiter);
+            // Speed PID: current speed vs limited desired speed
+            int target_speed_y = pid(autopilot_state.current_speed_y, (float)limited_desire_speed_y, &pid_y_speed);
+            autopilot_state.target_roll_rate = -(float)target_speed_y;
+            
+            // Yaw control: calculate desired yaw heading to target waypoint
+            float lat_diff = (float)(autopilot_state.target_lat - autopilot_state.current_lat);
+            float lon_diff = (float)(autopilot_state.target_lon - autopilot_state.current_lon);
+            float desired_yaw = atan2f(lon_diff, lat_diff) * 57.29578f; // Convert to degrees
+            
+            // Normalize to 0-360
+            if (desired_yaw < 0.0f) desired_yaw += 360.0f;
+            if (desired_yaw >= 360.0f) desired_yaw -= 360.0f;
+            
+            if (yaw_limiter_active) {
+                // Yaw limiter: constraints how fast we turn to the waypoint heading
+                float limited_desired_yaw = (float)pid(autopilot_state.current_yaw, desired_yaw, &pid_yaw_limiter);
+                
+                // Yaw rate PID: current yaw rate vs limited desired yaw (as target)
+                autopilot_state.target_yaw_rate = (float)pid(autopilot_state.current_yaw_rate, limited_desired_yaw, &pid_yaw_rate);
+                
+                // Track stability: increment counter each cycle limiter is running
+                yaw_limiter_stable_ticks++;
+                
+                // After 3 seconds stable (15 cycles at 5Hz), disable limiter
+                if (yaw_limiter_stable_ticks >= 15) {
+                    yaw_limiter_active = false;
+                    yaw_limiter_stable_ticks = 0;
+                }
+            } else {
+                // Limiter disabled: directly use desired yaw as yaw rate target
+                autopilot_state.target_yaw_rate = (float)pid(autopilot_state.current_yaw_rate, desired_yaw, &pid_yaw_rate);
+            }
         }
         vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(1000 / GPS_LOOP_HZ));
     }
