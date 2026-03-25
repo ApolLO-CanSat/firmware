@@ -11,8 +11,11 @@ target_link_libraries(${PROJECT_NAME}
   pico_stdlib
   hardware_i2c
   hardware_spi
+  hardware_pio
   FreeRTOS-Kernel-Heap4
 )
+
+pico_generate_pio_header(${PROJECT_NAME} ${CMAKE_CURRENT_LIST_DIR}/flight/dshot_encoder.pio)
 
 if (PICO_BOARD STREQUAL "orpheus_pico")
   target_link_libraries(${PROJECT_NAME} pico_bootsel_via_double_reset)
