@@ -182,15 +182,20 @@ void lora_receive_task(__unused void *params) {
         }
       }
     }
+    vTaskDelay(pdMS_TO_TICKS(200)); // small delay to prevent tight loop if messages are coming in very fast
   }
 }
 
 void lora_telemetry_task(__unused void *params) {
   LT_I("lora_telemetry_task starts NOW!");
+  vTaskDelay(pdMS_TO_TICKS(1000)); // wait for everything to initialize and stabilize
+  LT_D("Starting telemetry transmission...");
+  static uint32_t counter = 0;
   while (true) {
-    char msg[256];
+    LT_D("Preparing telemetry packet #%d", counter++);
+    char msg[256] = "this is a test!";
     // RPY(deg), RPY_rate(deg/s), XY_speed(m/s), ALT(m), VS(m/s), MODE(F,P,A), MOT(4)
-    snprintf(msg, sizeof(msg), "ANG:%.1f,%.1f,%.1f RT:%.1f,%.1f,%.1f SPD:%.2f,%.2f ALT:%.2f VS:%.2f FM:%d PM:%d ARM:%d MOT:%d,%d,%d,%d", 
+    /*snprintf(msg, sizeof(msg), "ANG:%.1f,%.1f,%.1f RT:%.1f,%.1f,%.1f SPD:%.2f,%.2f ALT:%.2f VS:%.2f FM:%d PM:%d ARM:%d MOT:%d,%d,%d,%d", 
       autopilot_state.current_roll,
       autopilot_state.current_pitch,
       autopilot_state.current_yaw,
@@ -207,39 +212,72 @@ void lora_telemetry_task(__unused void *params) {
       autopilot_state.motor_fr,
       autopilot_state.motor_fl,
       autopilot_state.motor_br,
-      autopilot_state.motor_bl);
-
+      autopilot_state.motor_bl);*/
+    LT_D("Telemetry packet created: %s", msg);
     if (d_lora_send_string(msg)) {
       LT_D("LoRa Telem TX: %s", msg);
     } else {
       LT_W("LoRa Telem TX failed");
     }
-    vTaskDelay(pdMS_TO_TICKS(2000));
+    LT_D("Telemetry packet #%d sent, waiting for next update...", counter);
+    vTaskDelay(pdMS_TO_TICKS(5000));
+  }
+}
+
+void hardware_init_task(void *params) {
+  (void)params;
+  
+  LT_I("Hardware Init Task: STARTING...");
+  
+  LT_I("IMU init...");
+  d_imu_init();
+  
+  LT_I("Baro init...");
+  d_baro_init();
+  
+  LT_I("Autopilot & Planner init...");
+  autopilot_init();
+  planner_init();
+
+  LT_I("LoRa init...");
+  if (d_lora_init(435.0f, SX1278_BW_125_00_KHZ, SX1278_SF_9, SX1278_CR_4_5)) {
+    vTaskDelay(1000);
+    xTaskCreate(lora_receive_task, "lora_receive", 2048, NULL, 2, NULL);
+    vTaskDelay(1000);
+    xTaskCreate(lora_telemetry_task, "lora_telemetry", 2048, NULL, 1, NULL);
+    LT_I("LoRa services started.");
+  } else {
+    LT_E("LoRa init FAILED in task.");
+  }
+  
+  LT_I("Hardware Init Task: COMPLETED.");
+  while(true) {
+    vTaskDelay(portMAX_DELAY);
+  }
+  vTaskDelete(NULL);
+}
+
+void dummy_task(void *params) {
+  (void)params;
+  while (true) {
+    LT_I("ALIVE! (FreeRTOS scheduler OK)");
+    vTaskDelay(pdMS_TO_TICKS(1000));
   }
 }
 
 int main() {
-  bi_decl(bi_program_description("ApolLO CanSat firmware"));
   stdio_init_all();
-  LT_I("Firmware starts NOW!");
-  LT_I("LoRa init");
-  if (!d_lora_init(435.0f, SX1278_BW_125_00_KHZ, SX1278_SF_9, SX1278_CR_4_5)) {
-    while (true) {
-      LT_E("LoRa failed, please restart!");
-      sleep_ms(1000);
-    }
-  }
-  xTaskCreate(lora_receive_task, "lora_receive", 1024, NULL, 2, NULL);
-  LT_I("IMU init");
-  d_imu_init();
-  LT_I("Baro init");
-  d_baro_init();
-  LT_I("Autopilot init");
-  autopilot_init();
-
-  planner_init();
-
   
+  sleep_ms(2000);
+
+  LT_I("CORE: PRE-SCHEDULER BOOT OK.");
+
+  xTaskCreate(dummy_task, "dummy", 1024, NULL, 1, NULL);
+  xTaskCreate(hardware_init_task, "hardware_init_tester", 2048, NULL, 2, NULL);
+
   vTaskStartScheduler();
-  LT_E("Scheduler exited unexpectedly");
+  
+  while(true) {
+    tight_loop_contents();
+  }
 }

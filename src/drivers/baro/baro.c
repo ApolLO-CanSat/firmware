@@ -188,7 +188,11 @@ void d_baro_init() {
   buf[1] = reg_ctrl_meas_val;
   d_i2c_write(ADDR, buf, sizeof(buf), false);
 
-  vTaskDelay(100 / portTICK_PERIOD_MS);
+  if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED) {
+    vTaskDelay(100 / portTICK_PERIOD_MS);
+  } else {
+    sleep_ms(100);
+  }
 
   // read the calibration parameters once during initialization and store them for later use
   LT_T("Reading BMP280 calibration parameters");

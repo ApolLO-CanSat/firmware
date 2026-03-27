@@ -32,7 +32,7 @@
 #define TX_QUEUE_DEPTH     8
 #define RX_QUEUE_DEPTH     8
 #define TX_TIMEOUT_MS      10000
-#define DAEMON_STACK_WORDS 1024
+#define DAEMON_STACK_WORDS 2048
 #define DAEMON_PRIORITY    3
 
 #define NOTIFY_DIO0     (1 << 0)
@@ -73,38 +73,38 @@ static uint8_t reg_read(uint8_t reg) {
   uint8_t rx[2] = {0};
   gpio_put(PICO_DEFAULT_SPI_CSN_PIN, 0);
   
-  UBaseType_t old_affinity = vTaskCoreAffinityGet(NULL);
-  vTaskCoreAffinitySet(NULL, 1 << portGET_CORE_ID());
-  taskENTER_CRITICAL();
-  
   spi_write_read_blocking(spi_default, tx, rx, 2);
 
-  taskEXIT_CRITICAL();
-  vTaskCoreAffinitySet(NULL, old_affinity);
-  
   gpio_put(PICO_DEFAULT_SPI_CSN_PIN, 1);
   return rx[1];
 }
 
 static void reg_write(uint8_t reg, uint8_t value) {
-  uint8_t tx[2] = {reg | 0x80, value};
+  uint8_t addr = reg | 0x80;
+  
+  LT_T("cs 0");
   gpio_put(PICO_DEFAULT_SPI_CSN_PIN, 0);
-  
-  UBaseType_t old_affinity = vTaskCoreAffinityGet(NULL);
-  vTaskCoreAffinitySet(NULL, 1 << portGET_CORE_ID());
-  taskENTER_CRITICAL();
-  
-  spi_write_blocking(spi_default, tx, 2);
 
-  taskEXIT_CRITICAL();
-  vTaskCoreAffinitySet(NULL, old_affinity);
+  LT_T("spi_write_blocking: checking if bus free");
+  // RP2350 Workaround: Manual byte-by-byte write to avoid SDK block-transfer hang
+  while (spi_is_busy(spi_default));
+
+  LT_T("spi_write_blocking: writing 2 bytes");
+  spi_get_hw(spi_default)->dr = (uint32_t)addr;
+  while (!(spi_get_hw(spi_default)->sr & SPI_SSPSR_TNF_BITS));
+  spi_get_hw(spi_default)->dr = (uint32_t)value;
   
+  while (spi_is_busy(spi_default));
+
+  LT_T("cs 1");
   gpio_put(PICO_DEFAULT_SPI_CSN_PIN, 1);
 }
 
 static void reg_write_masked(uint8_t reg, uint8_t value, uint8_t msb, uint8_t lsb) {
+  LT_T("reg_write_masked: reg=0x%02X, value=0x%02X, msb=%d, lsb=%d", reg, value, msb, lsb);
   uint8_t current = reg_read(reg);
   uint8_t mask    = (0xFF << (msb + 1)) | (0xFF >> (8 - lsb));
+  LT_T("masked function seems okay? starting reg_write");
   reg_write(reg, (current & mask) | value);
 }
 
@@ -112,16 +112,11 @@ static void fifo_read_burst(uint8_t *data, uint8_t length) {
   uint8_t addr = SX1278_REG_FIFO & 0x7F;
   gpio_put(PICO_DEFAULT_SPI_CSN_PIN, 0);
   
-  UBaseType_t old_affinity = vTaskCoreAffinityGet(NULL);
-  vTaskCoreAffinitySet(NULL, 1 << portGET_CORE_ID());
-  taskENTER_CRITICAL();
-  
+  while (spi_is_busy(spi_default));
   spi_write_blocking(spi_default, &addr, 1);
   spi_read_blocking(spi_default, 0x00, data, length);
+  while (spi_is_busy(spi_default));
 
-  taskEXIT_CRITICAL();
-  vTaskCoreAffinitySet(NULL, old_affinity);
-  
   gpio_put(PICO_DEFAULT_SPI_CSN_PIN, 1);
 }
 
@@ -129,15 +124,12 @@ static void fifo_write_burst(const uint8_t *data, uint8_t length) {
   uint8_t addr = SX1278_REG_FIFO | 0x80;
   gpio_put(PICO_DEFAULT_SPI_CSN_PIN, 0);
   
-  UBaseType_t old_affinity = vTaskCoreAffinityGet(NULL);
-  vTaskCoreAffinitySet(NULL, 1 << portGET_CORE_ID());
-  taskENTER_CRITICAL();
-  
+  while (spi_is_busy(spi_default));
   spi_write_blocking(spi_default, &addr, 1);
-  spi_write_blocking(spi_default, data, length);
-  
-  taskEXIT_CRITICAL();
-  vTaskCoreAffinitySet(NULL, old_affinity);
+  if (length > 0) {
+    spi_write_blocking(spi_default, data, length);
+  }
+  while (spi_is_busy(spi_default));
   
   gpio_put(PICO_DEFAULT_SPI_CSN_PIN, 1);
 }
@@ -147,6 +139,7 @@ static void fifo_write_burst(const uint8_t *data, uint8_t length) {
 // ---------------------------------------------------------------------------
 
 static void set_opmode(uint8_t mode) {
+  LT_T("Setting LoRa opmode: 0x%02X", mode);
   reg_write_masked(SX1278_REG_OP_MODE, mode, 2, 0);
 }
 
@@ -161,15 +154,26 @@ static void enter_rx(void) {
 }
 
 static void begin_tx(const lora_tx_packet_t *pkt) {
+  LT_D("Beginning LoRa TX of packet: \"%.*s\" (len=%d)", pkt->length, pkt->data, pkt->length);
+  LT_D("radio_state = RADIO_TX");
   radio_state = RADIO_TX;
+  LT_D("reg write");
   reg_write(SX1278_REG_IRQ_FLAGS, 0xFF);
+  LT_D("set_opmode");
   set_opmode(SX1278_STANDBY);
+  LT_D("reg_write_masked");
   reg_write_masked(SX1278_REG_DIO_MAPPING_1, SX1278_DIO0_TX_DONE, 7, 6);
+  LT_D("reg_write payload length");
   reg_write(SX1278_REG_PAYLOAD_LENGTH, pkt->length);
+  LT_D("reg_write fifo tx base addr");
   reg_write(SX1278_REG_FIFO_TX_BASE_ADDR, SX1278_FIFO_TX_BASE_ADDR_MAX);
+  LT_D("reg_write fifo addr ptr");
   reg_write(SX1278_REG_FIFO_ADDR_PTR, SX1278_FIFO_TX_BASE_ADDR_MAX);
+  LT_D("fifo_write_burst");
   fifo_write_burst(pkt->data, pkt->length);
+  LT_D("set_opmode(SX1278_TX)");
   set_opmode(SX1278_TX);
+  LT_D("TX should have started by now...");
 }
 
 // ---------------------------------------------------------------------------
@@ -179,6 +183,10 @@ static void begin_tx(const lora_tx_packet_t *pkt) {
 static void dio0_isr(uint gpio, uint32_t events) {
   (void)gpio;
   (void)events;
+  
+  // Disable interrupt to prevent flooding while task is busy
+  gpio_set_irq_enabled(LORA_DIO0_PIN, GPIO_IRQ_EDGE_RISE, false);
+  
   BaseType_t woken = pdFALSE;
   xTaskNotifyFromISR(daemon_handle, NOTIFY_DIO0, eSetBits, &woken);
   portYIELD_FROM_ISR(woken);
@@ -189,12 +197,18 @@ static void dio0_isr(uint gpio, uint32_t events) {
 // ---------------------------------------------------------------------------
 
 static void handle_dio0(void) {
+  if (spi_mutex == NULL) return;
+  
   uint8_t irq = reg_read(SX1278_REG_IRQ_FLAGS);
   reg_write(SX1278_REG_IRQ_FLAGS, 0xFF);
 
+  // Re-enable interrupts only AFTER clearing the hardware flag
+  gpio_set_irq_enabled(LORA_DIO0_PIN, GPIO_IRQ_EDGE_RISE, true);
+
   if (radio_state == RADIO_TX) {
-    if (!(irq & SX1278_CLEAR_IRQ_FLAG_TX_DONE))
+    if (!(irq & SX1278_CLEAR_IRQ_FLAG_TX_DONE)) {
       return;
+    }
 
     lora_tx_packet_t next;
     if (xQueueReceive(tx_queue, &next, 0) == pdTRUE) {
@@ -206,8 +220,9 @@ static void handle_dio0(void) {
   }
 
   // RX path
-  if (!(irq & SX1278_CLEAR_IRQ_FLAG_RX_DONE))
+  if (!(irq & SX1278_CLEAR_IRQ_FLAG_RX_DONE)) {
     return;
+  }
 
   if (irq & SX1278_CLEAR_IRQ_FLAG_PAYLOAD_CRC_ERROR) {
     LT_W("LoRa CRC error");
@@ -227,18 +242,27 @@ static void handle_dio0(void) {
 }
 
 static void handle_tx_ready(void) {
-  if (radio_state != RADIO_RX)
-    return;
-
+  LT_D("Handling LoRa TX NOW!");
+  if (radio_state != RADIO_RX) {
+      LT_W("TX ready notification received but radio is not in RX mode (what is this check even for??)");
+      return;
+  }
+  LT_D("TX ready notification received and radio is in RX mode, proceeding to check TX queue...");
   lora_tx_packet_t pkt;
+  LT_D("Checking TX queue for pending packets...");
   if (xQueueReceive(tx_queue, &pkt, 0) == pdTRUE) {
+    LT_D("Pending TX packet found, beginning transmission...");
     begin_tx(&pkt);
   }
 }
 
 static void lora_daemon(void *params) {
   (void)params;
+  
+  // WAIT for scheduler to be fully up
+  vTaskDelay(pdMS_TO_TICKS(500)); 
 
+  // We already did hw_init in d_lora_init, so just enter RX mode
   xSemaphoreTake(spi_mutex, portMAX_DELAY);
   enter_rx();
   xSemaphoreGive(spi_mutex);
@@ -249,35 +273,46 @@ static void lora_daemon(void *params) {
     TickType_t wait = (radio_state == RADIO_TX) ? pdMS_TO_TICKS(TX_TIMEOUT_MS) : portMAX_DELAY;
 
     uint32_t bits = 0;
-    BaseType_t got = xTaskNotifyWait(0, UINT32_MAX, &bits, wait);
+    BaseType_t got = xTaskNotifyWait(0, 0xFFFFFFFF, &bits, wait);
 
-    xSemaphoreTake(spi_mutex, portMAX_DELAY);
-
-    if (radio_paused) {
-      if (bits & NOTIFY_RESUME) {
-        radio_paused = false;
+    if (xSemaphoreTake(spi_mutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+      if (got == pdFALSE && radio_state == RADIO_TX) {
+        // We timed out waiting for SPI AND we were in TX mode
+        LT_W("LoRa TX timeout (SPI busy), resetting to RX");
+        xSemaphoreTake(spi_mutex, portMAX_DELAY);
         enter_rx();
+        xSemaphoreGive(spi_mutex);
+      } else {
+        LT_W("LoRa daemon: SPI mutex timeout");
       }
-      xSemaphoreGive(spi_mutex);
       continue;
     }
 
+    // pdFALSE means xTaskNotifyWait timed out (TX timeout)
     if (got == pdFALSE) {
       if (radio_state == RADIO_TX) {
-        LT_W("LoRa TX timeout, resetting to RX");
         enter_rx();
+        xSemaphoreGive(spi_mutex);
+        LT_W("LoRa TX timeout, resetting to RX");
+      } else {
+        xSemaphoreGive(spi_mutex);
       }
-      xSemaphoreGive(spi_mutex);
       continue;
     }
 
     if (bits & NOTIFY_DIO0)
       handle_dio0();
 
-    if (bits & NOTIFY_TX_READY)
+    if (bits & NOTIFY_TX_READY) {
+      LT_D("LoRa TX ready notification received");
       handle_tx_ready();
+      LT_D("LoRa TX ready handling completed");
+    }
 
     xSemaphoreGive(spi_mutex);
+    
+    // Explicitly yield to let other core tasks run on RP2350
+    taskYIELD();
   }
 }
 
@@ -295,7 +330,11 @@ static bool hw_init(float frequency_mhz, uint8_t bandwidth, uint8_t spreading_fa
   gpio_set_dir(PICO_DEFAULT_SPI_CSN_PIN, GPIO_OUT);
   gpio_put(PICO_DEFAULT_SPI_CSN_PIN, 1);
 
-  vTaskDelay(pdMS_TO_TICKS(10));
+  if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED) {
+    vTaskDelay(pdMS_TO_TICKS(10));
+  } else {
+    sleep_ms(100); // 10ms is too short for boot-up
+  }
 
   uint8_t version = reg_read(SX1278_REG_VERSION);
   if (version != 0x12) {
@@ -307,7 +346,11 @@ static bool hw_init(float frequency_mhz, uint8_t bandwidth, uint8_t spreading_fa
 
   // Sleep mode required to switch to LoRa mode
   set_opmode(SX1278_SLEEP);
-  vTaskDelay(pdMS_TO_TICKS(10));
+  if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED) {
+    vTaskDelay(pdMS_TO_TICKS(10));
+  } else {
+    sleep_ms(10);
+  }
   reg_write_masked(SX1278_REG_OP_MODE, SX1278_LORA, 7, 7);
 
   // Carrier frequency: frf = freq / (32 MHz / 2^19)
@@ -376,25 +419,32 @@ bool d_lora_init(float frequency_mhz, uint8_t bandwidth, uint8_t spreading_facto
 }
 
 bool d_lora_send(const uint8_t *data, uint8_t length) {
-  if (daemon_handle == NULL || length == 0)
-    return false;
-
+  LT_D("d_lora_send: \"%.*s\" (len=%d)", length, data, length);
+  if (daemon_handle == NULL || length == 0) {
+    LT_D("LoRa send failed: not initialized or zero length");
+    vTaskDelay(pdMS_TO_TICKS(2000));
+    return false;}
+  LT_D("______ the IF thing passed, then why the hell are we failing???");
   lora_tx_packet_t pkt;
-  pkt.length = length;
-  memcpy(pkt.data, data, length);
-
+  LT_D("memset!");
+  memset(&pkt, 0, sizeof(pkt));
+  LT_D("pkt len smth idk!");
+  pkt.length = length > LORA_MAX_PKT_LENGTH ? LORA_MAX_PKT_LENGTH : length;
+  LT_D("memcpy!");
+  memcpy(pkt.data, data, pkt.length);
+  LT_D("queue send!");
   if (xQueueSend(tx_queue, &pkt, pdMS_TO_TICKS(100)) != pdTRUE)
     return false;
-
+  LT_D("x task notify!");
   xTaskNotify(daemon_handle, NOTIFY_TX_READY, eSetBits);
+  LT_D("d_lora_send success!");
   return true;
 }
 
 bool d_lora_send_string(const char *str) {
   size_t len = strlen(str);
-  if (len >= LORA_MAX_PKT_LENGTH)
-    return false;
-  return d_lora_send((const uint8_t *)str, (uint8_t)(len + 1));
+  LT_D("d_lora_send_string: \"%s\" (len=%d)", str, (int)len);
+  return d_lora_send((const uint8_t *)str, (uint8_t)len);
 }
 
 bool d_lora_receive(lora_rx_packet_t *packet, TickType_t timeout) {

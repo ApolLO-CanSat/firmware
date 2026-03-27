@@ -20,7 +20,11 @@ void d_imu_init() {
   uint8_t buf[] = {0x6b, 0x80};
   d_i2c_write(ADDR, buf, sizeof(buf), false);
 
-  vTaskDelay(100 / portTICK_PERIOD_MS);
+  if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED) {
+    vTaskDelay(100 / portTICK_PERIOD_MS);
+  } else {
+    sleep_ms(100);
+  }
 
   // Clear sleep mode
   buf[1] = 0x00;
@@ -28,7 +32,11 @@ void d_imu_init() {
   
   LT_T("Initialized MPU6050. Remember to calibrate.");
   
-  vTaskDelay(100 / portTICK_PERIOD_MS);
+  if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED) {
+    vTaskDelay(100 / portTICK_PERIOD_MS);
+  } else {
+    sleep_ms(100);
+  }
 }
 
 void d_imu_read_raw(int16_t accel[3], int16_t gyro[3], int16_t *temp) {
@@ -53,7 +61,7 @@ void d_imu_read_raw(int16_t accel[3], int16_t gyro[3], int16_t *temp) {
 }
 
 void d_imu_calibrate() {
-  LT_I("Calibrating MPU6050... Keep it still!");
+  /*LT_I("Calibrating MPU6050... Keep it still!");
   const int samples = 1000;
   int32_t accel_sum[3] = {0}, gyro_sum[3] = {0};
   int16_t temp;
@@ -71,6 +79,8 @@ void d_imu_calibrate() {
   LT_I("MPU6050 Calibration done. Accel bias: [%d, %d, %d], Gyro bias: [%d, %d, %d]", 
       accel_bias[0], accel_bias[1], accel_bias[2],
       gyro_bias[0], gyro_bias[1], gyro_bias[2]);
+  */
+ LT_W("MPU6050 Calibration stub. Remember to fix in release.");
 }
 
 void d_imu_read_cal(int16_t accel[3], int16_t gyro[3], int16_t *temp) {

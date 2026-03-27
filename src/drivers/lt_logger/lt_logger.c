@@ -60,7 +60,7 @@ void lt_log(const uint8_t level, const char *format, ...) {
 #if LT_LOGGER_TASK
   char *task_name   = "";
   char task_colon   = '-';
-  TaskHandle_t task = xTaskGetCurrentTaskHandle();
+  TaskHandle_t task = (xTaskGetSchedulerState() == taskSCHEDULER_NOT_STARTED) ? NULL : xTaskGetCurrentTaskHandle();
   if (task) {
     task_name  = pcTaskGetName(task);
     task_colon = ':';
@@ -72,52 +72,89 @@ void lt_log(const uint8_t level, const char *format, ...) {
   char c_value  = '0' + (colors[level] & 0x7);
 #endif
 
-  xSemaphoreTake(logger_sem, portMAX_DELAY);
-  printf(
-  // format:
+  bool has_semaphore = false;
+  if (task && xTaskGetSchedulerState() == taskSCHEDULER_RUNNING) {
+    if (xSemaphoreTake(logger_sem, 0) == pdTRUE) {
+      has_semaphore = true;
+    }
+  }
+
+  if (xTaskGetSchedulerState() == taskSCHEDULER_NOT_STARTED) {
+    printf(
 #if LT_LOGGER_COLOR
-    "\e[%c;3%cm"
+      "\e[%c;3%cm"
 #endif
-    "%c "
-#if LT_LOGGER_TIMESTAMP
-    "[%11.3f] "
-#endif
+      "%c [      0.000] "
 #if LT_LOGGER_COLOR
-    "\e[0m"
-#endif
-#if LT_LOGGER_CALLER
-    "%s():%hu: "
+      "\e[0m"
 #endif
 #if LT_LOGGER_TASK
-    "%10s%c "
-#endif
-    ,
-  // arguments:
-#if LT_LOGGER_COLOR
-    c_bright, // whether text is bright
-    c_value,  // text color
-#endif
-    levels[level]
-#if LT_LOGGER_TIMESTAMP
-    ,
-    seconds // float
+      "          - "
 #endif
 #if LT_LOGGER_CALLER
-    ,
-    caller,
-    line
+      "%s():%hu: "
+#endif
+      ,
+#if LT_LOGGER_COLOR
+      c_bright,
+      c_value,
+#endif
+      levels[level]
+#if LT_LOGGER_CALLER
+      ,
+      caller,
+      line
+#endif
+    );
+  } else {
+    printf(
+    // format:
+#if LT_LOGGER_COLOR
+      "\e[%c;3%cm"
+#endif
+      "%c "
+#if LT_LOGGER_TIMESTAMP
+      "[%11.3f] "
+#endif
+#if LT_LOGGER_COLOR
+      "\e[0m"
+#endif
+#if LT_LOGGER_CALLER
+      "%s():%hu: "
 #endif
 #if LT_LOGGER_TASK
-    ,
-    task_name,
-    task_colon // printing outside of tasks
+      "%10s%c "
 #endif
-  );
+      ,
+    // arguments:
+#if LT_LOGGER_COLOR
+      c_bright, // whether text is bright
+      c_value,  // text color
+#endif
+      levels[level]
+#if LT_LOGGER_TIMESTAMP
+      ,
+      seconds // float
+#endif
+#if LT_LOGGER_CALLER
+      ,
+      caller,
+      line
+#endif
+#if LT_LOGGER_TASK
+      ,
+      task_name,
+      task_colon // printing outside of tasks
+#endif
+    );
+  }
 
   va_list va_args;
   va_start(va_args, format);
   vprintf(format, va_args);
   va_end(va_args);
   putchar('\n');
-  xSemaphoreGive(logger_sem);
+  if (has_semaphore) {
+    xSemaphoreGive(logger_sem);
+  }
 }
